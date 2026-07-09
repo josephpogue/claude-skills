@@ -1,27 +1,24 @@
 #!/usr/bin/env bash
-# Install the frontier-go-wild portable bundle on a fresh machine.
-# Idempotent: re-running skips anything already in place.
-# Run from inside the unpacked bundle: bash setup.sh
+# Onboard the frontier-go-wild skill: install its vendored browser toolkit +
+# agent and collect the two credentials it needs. Idempotent — re-running skips
+# anything already in place. This file ships beside SKILL.md, so $HERE is the
+# installed skill folder itself. Run: bash setup.sh
 set -euo pipefail
 
-HERE=$(cd "$(dirname "$0")" && pwd)
+HERE=$(cd "$(dirname "$0")" && pwd)   # the installed skill folder
 
 # ── install roots ────────────────────────────────────────────────────────────
-# Keep the canonical My-Life path when that repo exists (Joseph's own machine);
-# otherwise install the toolkit under ~/.claude/tools.
-if [ -d "$HOME/Documents/GitHub/My-Life/automations" ]; then
+# If a live My-Life browser-pilot is already present, reuse it (keeps its warm
+# session); otherwise install the vendored toolkit under ~/.claude/tools.
+if [ -d "$HOME/Documents/GitHub/My-Life/automations/browser-pilot" ]; then
   PILOT="$HOME/Documents/GitHub/My-Life/automations/browser-pilot"
 else
   PILOT="$HOME/.claude/tools/browser-pilot"
 fi
 
-echo "→ skill  → ~/.claude/skills/frontier-go-wild"
-mkdir -p "$HOME/.claude/skills"
-rsync -a "$HERE/skill/" "$HOME/.claude/skills/frontier-go-wild/"
-
 echo "→ agent  → ~/.claude/agents/browser-pilot.md"
 mkdir -p "$HOME/.claude/agents"
-cp "$HERE/agents/browser-pilot.md" "$HOME/.claude/agents/browser-pilot.md"
+cp "$HERE/agent/browser-pilot.md" "$HOME/.claude/agents/browser-pilot.md"
 
 echo "→ pilot  → $PILOT"
 mkdir -p "$PILOT"
@@ -31,13 +28,6 @@ mkdir -p "$PILOT/state" "$PILOT/signals"
 # Record where the toolkit lives so SKILL.md can resolve it on any machine.
 mkdir -p "$HOME/.claude/data/frontier-go-wild"
 echo "$PILOT" > "$HOME/.claude/data/frontier-go-wild/pilot-root"
-
-if [ -f "$HERE/bin/runlog" ] && [ ! -f "$HOME/.local/bin/runlog" ]; then
-  echo "→ runlog → ~/.local/bin/runlog (heartbeat helper, optional)"
-  mkdir -p "$HOME/.local/bin"
-  cp "$HERE/bin/runlog" "$HOME/.local/bin/runlog"
-  chmod +x "$HOME/.local/bin/runlog"
-fi
 
 # ── python runtime ───────────────────────────────────────────────────────────
 if ! command -v uv >/dev/null 2>&1; then
@@ -74,9 +64,8 @@ https://developers.google.com/oauthplayground with scope
 https://www.googleapis.com/auth/gmail.readonly)
 MSG
 read -rp "  gmail address: " G_EMAIL
-# Namespace the store block by the account's local-part, so it is per-user and
-# not hardcoded to any one inbox. The OTP reader is invoked with this namespace.
-NS="$(printf '%s' "${G_EMAIL%%@*}" | tr -cs 'A-Za-z0-9' '_')_gmail"
+# Fixed, non-personal namespace that the vendored gmail_otp.py reads by default.
+NS="frontier_otp_gmail"
 if ! grep -q "^\[google.$NS\]" "$STORE"; then
   read -rp "  client_id: " G_ID
   read -rp "  client_secret: " G_SECRET

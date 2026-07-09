@@ -30,10 +30,9 @@ is idempotent and skips anything already in place.
 
 ## Steps
 
-1. **Locate the bundled installer.** It ships with the skill at
-   `<this-repo>/skills/tools/frontier-go-wild/setup.sh`, alongside
-   `package-portable.sh`. If the skill was installed via `npx skills add`, the
-   folder is at `~/.claude/skills/frontier-go-wild/`.
+1. **Locate the bundled installer.** It ships inside the skill folder at
+   `~/.claude/skills/frontier-go-wild/setup.sh`, alongside the vendored
+   `browser-pilot/` toolkit and `agent/browser-pilot.md` that it installs.
 
 2. **Run the installer** and follow its prompts:
    ```bash
@@ -56,7 +55,8 @@ is idempotent and skips anything already in place.
      [OAuth Playground](https://developers.google.com/oauthplayground)).
 
    Paste the client id, client secret, refresh token, and Gmail address when
-   prompted. They go into a `[google.<account>]` block in the local store.
+   prompted. They go into a `[google.frontier_otp_gmail]` block in the local
+   store (the namespace the vendored OTP reader looks up by default).
    **The OTP reader is Gmail-only today** — if your Frontier codes arrive at a
    non-Gmail address, this path will not work without adapting the reader.
 

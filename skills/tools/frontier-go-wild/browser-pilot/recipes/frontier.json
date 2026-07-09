@@ -1,0 +1,87 @@
+{
+  "gotchas": [
+    "Homepage /login path 404s; must use the div.user-background.pointer overlay.",
+    "Login + OTP succeeded HEADLESS too on retry; --headed only needed if a CAPTCHA/bot-check appears.",
+    "First LOG IN submit can falsely report 'login information is incorrect' -- re-submit once; 2nd attempt reaches the OTP screen.",
+    "Email OTP ('Frontier Passcode', valid 10 min) arrives within ~15-30s; fetch via gmail_otp.py. OTP BOX SELECTOR (verified 2026-06-27 PM): the working selector is 'div.code-inputs input >> nth=0..5' -- the older 'input[inputmode=numeric]' selector now TIMES OUT (no longer matches the boxes). Fill nth=0..5; it auto-submits and lands logged-in. When entering a re-requested code, query newer_than:2m to skip the stale first code. UPDATE 2026-07-08: plain 'div.code-inputs input >> nth=0' now resolves to a HIDDEN duplicate (fill times out 'element is not visible') -- use 'div.code-inputs input:visible >> nth=0..5'; the OTP modal stays up (no DOB fallback triggered) so just retry with :visible.",
+    "OTP TIMING / DOB-FALLBACK trap (2026-06-27 PM): if you fetch the code but the box-fill fails (wrong selector / boxes detached), Frontier's 'send code' can error out and the modal flips to a 'VERIFY YOUR DATE OF BIRTH' fallback screen (no DOB is stored in creds). Recovery: don't try DOB -- re-open the homepage, reopen the overlay, log in fresh to get a NEW OTP screen + new emailed code, and fill 'div.code-inputs input' promptly.",
+    "Homepage BOOK widget trip-type/search-type radios (#rboneway, #searchDollars) are visually hidden -- click their labels, not the inputs.",
+    "Origin/destination are autocomplete fields (#origin/#destination): type the code then click the li suggestion (li:has-text(\"<City>\"):has-text(\"<CODE>\")).",
+    "Date picker is a jQuery-UI 2-month calendar: current month = .ui-datepicker-group-first, next month = .ui-datepicker-group-last; pick the day from the correct group to avoid the duplicate day number in the other month.",
+    "Results page is the Navitaire booking app at booking.flyfrontier.com/Flight/Select. The fare-grid divs are NOT semantic a/button/[role=button] and sit AFTER ~100 hidden signup/login form controls, so they don't appear in control.py snapshot's first-100 controls -- drive them with text= anchors and read availability from screenshots / body text.",
+    "Go Wild fare grid re-polls availability; Playwright visible-state waits on its cells (e.g. text=\"Unavailable\") can intermittently time out even though the text is on screen. The positive anchor text=\"One-way\" resolves reliably; otherwise read the grid from a screenshot.",
+    "Session persistence: `serve --headless --state state/frontier.json` restores cookies on start; after a successful login run `save_state` to write the storage state. Re-verified 2026-06-27: restored session was still logged in on start (no re-login needed) -- homepage snapshot showed 'Hi, <account> | <miles> mi.' with ACCOUNT/LOG OUT. Logged-in indicator: header shows 'Hi, <account> | <miles> mi.' plus ACCOUNT/LOG OUT (snapshot text), replacing 'Hi, log in | sign up'.",
+    "Flight number + route detail: click a row's '+Details' (selector text=+Details; nth=0 is the topmost/first flight row) to open the FLIGHT DETAILS slider modal (#FlightDetailsSlider), which shows the flight number (e.g. 'F9 1447'), aircraft, Atlanta->San Francisco, flying time, and times. The modal intercepts pointer events while open; close it with press body Escape (clicking other page elements times out). The flight number is also readable from the snapshot text as an 'F9 <num>' token after expanding +Details.",
+    "Nonstop filtering: the results grid mixes nonstop and connecting itineraries with no built-in nonstop filter. Each row's duration line reads either '<dur> | Nonstop' or '<dur> | <n> Stop <CITY>'. Count nonstops by counting 'Nonstop' in snapshot text. For ATL->SFO 2026-07-11 (Sat 7/11, day-tab fare $158) there was exactly ONE nonstop (F9 1447, 4:55 PM ATL -> 7:18 PM SFO, 5h23m) and it was Unavailable for Go Wild; all 13 other itineraries were 1-stop (DEN/LAS/DFW/LAX), several of which DID have Go Wild ($158 One-way via DEN).",
+    "DEEP-LINK (big efficiency win, verified 2026-06-27): you do NOT need to drive the homepage BOOK widget per search. While logged in, opening 'https://booking.flyfrontier.com/Flight/InternalSelect?o1=<ORIG>&d1=<DEST>&dd1=YYYY-MM-DD&ADT=1&mon=true&promo=' lands DIRECTLY on /Flight/Select for that one-way search (one adult), fully logged in. Loop dates by just changing dd1. Allow ~6s for the grid to render before clicking the GoWild pill.",
+    "GoWild PILL = DAY-LEVEL SIGNAL (verified 2026-06-27): the GoWild!\u2122 toggle pill shows EITHER '$<fee> GoWild!\u2122' (the day's lowest available Go Wild fee) OR a literal dash '--'. A '--' pill means ZERO Go Wild availability for the ENTIRE day (every flight tile reads 'Unavailable', and clicking the pill won't switch the grid into Go Wild mode because there's nothing to price). A '$' pill means >=1 flight has Go Wild; click the pill to switch the grid, then read each row's leftmost 'Basic Fare' tile ('$<fee> One-way' = available; 'Unavailable' = no seat). Reading the pill alone tells you go/no-go for the day before inspecting rows.",
+    "FREQUENCY GOTCHA for ATL->BOS (RE-VERIFIED LIVE 2026-06-27 ~14:40, dates 6/27-7/3): ATL->BOS has only ~one Go Wild nonstop, the 10:40 PM F9 3086 (10:40 PM -> 1:27 AM +1, 2h47m). The 5:05 AM nonstop (5:05 AM -> 7:52 AM, 2h47m) was Go Wild Unavailable on EVERY date checked. F9 3086 Go Wild was available 6/29 ($79), 7/2 ($119), 7/3 ($119); pill='--' (zero Go Wild all day) on 6/27, 6/28, 6/30, 7/1. The ONLY Go Wild connecting itinerary in this window was 7/3 ATL->RDU->BOS (F9 1670 10:51 PM->12:21 AM RDU, F9 3058 9:27 AM->11:33 AM BOS, 9h6m layover RDU, $238 One-way total); all other RDU 1-stops were Unavailable. Connecting-itinerary frequency by date: 6/27 had ZERO connecting itineraries (only the single 10:40 PM nonstop showed); 6/28/6/30 had two RDU 1-stops each (10:27 AM->RDU 11:59 AM and 10:40 PM->RDU 12:10 AM, both then RDU 8:59 AM->BOS 11:05 AM next day); 6/29/7/1 had one RDU 1-stop (6:35 AM->RDU 8:03 AM, then RDU 8:59 AM->BOS 11:05 AM, 4h30m); 7/2 had two RDU 1-stops; 7/3 had two RDU 1-stops incl. the bookable $238 one. Go Wild prices a 1-stop itinerary as ONE fee on the Basic Fare tile (not per-leg).",
+    "HUB STITCHING DEAD-END for ATL->BOS (2026-06-27): MCO->BOS, PHL->BOS, and DEN->BOS have NO nonstop Frontier service (Frontier only routes them 1-stop via ATL/RDU), so they cannot serve as the 2nd leg of a self-stitched 1-stop ATL->hub->BOS route. RDU->BOS DOES have one nonstop (08:59 -> 11:05) but it was Go Wild 'Unavailable' on all 7 dates. Net: no DIY 1-stop Go Wild route to BOS via these hubs was bookable in this window even when the ATL->hub leg had Go Wild seats. The only Go Wild itineraries to BOS were Frontier's own pre-built 1-stop products (e.g. 7/3 ATL->RDU->BOS $238, F9 1670+F9 3058) that show up directly in the ATL->BOS search.",
+    "Session state can be STALE/logged-out on restore (2026-06-27 PM run): despite a prior save, the restored state showed 'Hi, log in | sign up'. Had to re-login (creds logins.frontier in ~/.config/credentials/store.toml, read via tomllib; OTP via gmail_otp.py polled ~every 10s, code arrived ~10-20s) then save_state again. The transient 'login information is incorrect' on the 1st LOG IN still happens -- re-fill + click again reaches OTP."
+  ],
+  "last_verified": "seed recipe \u2014 re-verified automatically on first run",
+  "login": {
+    "credentials_key": "frontier",
+    "notes": "/login 404s -- always start from the homepage and open the overlay. Login fields are NOT in the snapshot's first 100 controls (those are hidden signup/login forms); use :visible selectors. First LOG IN click occasionally returns 'Your login information is incorrect.' even with correct creds (transient/anti-bot) -- just re-fill both fields and click LOG IN again; the 2nd attempt advances to the email OTP screen. page.fill clears+sets the field, so the masked dot-count is cosmetic.",
+    "otp_query": "subject:\"Frontier Passcode\" newer_than:5m",
+    "otp_source": "gmail_otp.py",
+    "steps": [
+      "serve --profile frontier --headed  (headless also works for login+OTP)",
+      "open --url https://www.flyfrontier.com/",
+      "click --selector .wisepops-close   (only if a wisepops promo is present; ignore timeout if absent)",
+      "click --selector div.user-background.pointer   (opens the ACCOUNT SIGN IN overlay)",
+      "type  --selector input[name=email]:visible    --value <username>",
+      "type  --selector input[name=password]:visible --value <password>",
+      "click --selector div.button:has-text(\"LOG IN\")",
+      "If error banner appears, re-type both :visible fields and click LOG IN again.",
+      "OTP: poll gmail_otp.py (~15s after submit, every ~10s up to ~90s).",
+      "Type the 6 digits into 'div.code-inputs input:visible >> nth=0 .. nth=5' (auto-submits; lands logged-in on homepage showing 'Hi, <account> | <miles> mi.'). :visible is REQUIRED as of 2026-07-08 (plain selector hits a hidden duplicate); old input[inputmode=numeric] selector no longer matches."
+    ],
+    "url": "https://www.flyfrontier.com/"
+  },
+  "needs_human": false,
+  "search": {
+    "description": "One-way / round-trip search from the homepage BOOK widget; submitting lands on booking.flyfrontier.com/Flight/Select.",
+    "steps": [
+      "click --selector label:has-text(\"One-way\")   (the #rboneway radio itself is hidden)",
+      "click --selector #origin ; type --selector #origin --value ATL ; click --selector li:has-text(\"Atlanta\"):has-text(\"ATL\")",
+      "click --selector #destination ; type --selector #destination --value SFO ; click --selector li:has-text(\"San Francisco\"):has-text(\"SFO\")",
+      "click --selector #departureDate   (opens a jQuery-UI 2-month datepicker)",
+      "click --selector '.ui-datepicker-group-last a >> text=\"11\"'   (left month=current=.ui-datepicker-group-first, right month=next=.ui-datepicker-group-last; pick the day in the correct month group)",
+      "click --selector #btnSearch"
+    ]
+  },
+  "selectors": {
+    "login_email": "input[name=email]:visible",
+    "login_overlay_trigger": "div.user-background.pointer",
+    "login_password": "input[name=password]:visible",
+    "login_submit": "div.button:has-text(\"LOG IN\")",
+    "otp_box": "div.code-inputs input:visible >> nth=0 .. nth=5  (verified 2026-07-08; the un-:visible selector now matches a hidden duplicate and times out; old input[inputmode=numeric] also dead)",
+    "results_available_fare_label": "text=\"One-way\"",
+    "results_fare_mode_dollars": "text=Dollars",
+    "results_fare_mode_gowild": "text=GoWild!\u2122",
+    "results_fare_mode_miles": "text=Miles",
+    "search_datepicker_day_next_month": ".ui-datepicker-group-last a >> text=\"<DD>\"",
+    "search_datepicker_day_this_month": ".ui-datepicker-group-first a >> text=\"<DD>\"",
+    "search_deeplink": "https://booking.flyfrontier.com/Flight/InternalSelect?o1=<ORIG>&d1=<DEST>&dd1=YYYY-MM-DD&ADT=1&mon=true&promo=  (logged-in one-way deep-link straight to /Flight/Select; loop dates via dd1)",
+    "search_depart_date": "#departureDate",
+    "search_destination": "#destination",
+    "search_oneway_radio_label": "label:has-text(\"One-way\")",
+    "search_origin": "#origin",
+    "search_submit": "#btnSearch"
+  },
+  "signals": {
+    "go_wild_available": {
+      "available_marker_selector": "text=\"One-way\"",
+      "description": "On the results page (booking.flyfrontier.com/Flight/Select) there is a 3-way fare-pricing toggle above the flight list with pills: '$<x> Dollars', '$<y> GoWild!\u2122', 'mi + $ Miles'. CLICK the GoWild!\u2122 pill (selector text=GoWild!\u2122) to re-price the whole grid in Go Wild terms. After that, EACH flight row shows four fare tiles (Basic Fare / Economy / Premium / Business Bundle). A flight HAS a Go Wild seat available when its tiles render a dollar amount with the label 'One-way' (e.g. '$158  One-way'); a flight has NO Go Wild seat when every tile shows the literal text 'Unavailable'. In the validated ATL->SFO 2026-07-11 search, the nonstop 4:55pm flight was 'Unavailable' for Go Wild while the 1-stop-DEN 7:40am flights showed '$158 One-way' (available). Positive/visible Playwright anchor that resolves reliably: text=\"One-way\". Note: the Go Wild grid re-polls availability, so elements can briefly detach -- retry waits/clicks if they time out.",
+      "fare_mode_toggle_selector": "text=GoWild!\u2122",
+      "selector": "text=GoWild!\u2122  (click to switch the fare grid into Go Wild mode), then read each flight row's fare tiles",
+      "unavailable_marker_text": "Unavailable"
+    },
+    "go_wild_fee_tier": {
+      "description": "The Go Wild advance/booking fee (fee tier) is the DOLLAR AMOUNT shown for the bare Go Wild seat. Two places: (1) the GoWild!\u2122 toggle pill itself shows the LOWEST available Go Wild fee for the searched day (e.g. '$158 GoWild!\u2122'); (2) per flight, the leftmost 'Basic Fare' tile in Go Wild mode is that flight's advance fee (e.g. '$158 One-way'). The three bundle columns to its right (Economy '$198', Premium '$228', Business '$387') are the same fee plus the bundle upsell. The day-tabs across the top ($214/$197/...) are regular Dollar fares, NOT Go Wild fees.",
+      "selector": "the GoWild!\u2122 toggle pill text (e.g. '$158 GoWild!\u2122'), and per-flight the leftmost 'Basic Fare' tile in Go Wild mode"
+    }
+  },
+  "site": "frontier"
+}

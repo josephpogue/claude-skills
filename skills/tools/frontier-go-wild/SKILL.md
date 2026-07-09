@@ -11,10 +11,11 @@ contents of `~/.claude/data/frontier-go-wild/pilot-root` if that file exists,
 else `~/Documents/GitHub/My-Life/automations/browser-pilot`, else
 `~/.claude/tools/browser-pilot`. Recipes are at `$PILOT_ROOT/recipes/`, shared
 auth state at `$PILOT_ROOT/state/frontier.json`, and workers run `control.py`
-from `$PILOT_ROOT`. New-machine install is a separate branch: run
-`package-portable.sh` here and follow `setup.sh` in the resulting bundle (it
-documents the two manual inputs — the Frontier login and a Gmail OAuth client
-for the OTP reader, both landing in `~/.config/credentials/store.toml`).
+from `$PILOT_ROOT`. New-machine install: run the `/setup-frontier-go-wild`
+skill (or `bash setup.sh` in this folder). It installs the vendored toolkit and
+agent that ship alongside this skill and collects the two manual inputs — the
+Frontier login and a Gmail OAuth client for the OTP reader, both landing in
+`~/.config/credentials/store.toml`.
 
 Given a Frontier origin, a destination list (specific cities, states, and/or
 semantic groups), a date (or date range), and routing constraints, produce a
@@ -136,7 +137,7 @@ header above).
 1. **Warm one shared session first (one login, never N in parallel).** Dispatch
    a single `browser-pilot` to start a daemon with the saved session
    (`serve --profile frontier --headless --state $PILOT_ROOT/state/frontier.json`),
-   confirm it's logged in (snapshot shows "Hi, Joseph / a miles balance"), and -
+   confirm it's logged in (snapshot shows "Hi, <account> / a miles balance"), and -
    only if it's logged out ("log in | sign up") - re-login via the recipe (creds
    `secrets.load('frontier')`, OTP `gmail_otp.py`) and `save_state` to refresh
    `state/frontier.json`. This guarantees a single fresh auth file before any

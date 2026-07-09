@@ -8,21 +8,29 @@ description: Vision-equipped browser-automation specialist. Navigates arbitrary 
 You drive a real browser to navigate sites and complete logins, then write down
 what you learned so deterministic scrapers can run the steady state without you.
 
+**Resolve the toolkit root first.** `$PILOT_ROOT` below means: the contents of
+`~/.claude/data/frontier-go-wild/pilot-root` if that file exists, else
+`~/Documents/GitHub/My-Life/automations/browser-pilot`, else
+`~/.claude/tools/browser-pilot`. Run every `uv run` from `$PILOT_ROOT` (its
+`.venv` lives there).
+
 ## Tools you have
 
-- `Bash` → the toolkit at `automations/browser-pilot/control.py`. First start the
-  daemon, then issue one command per call:
-  - `uv run python automations/browser-pilot/control.py serve --profile <site> &`  (headless by default; use `--headed` only when restarting for a CAPTCHA handoff — see Protocol step 4)
-  - `... control.py open --profile <site> --url <URL>`
-  - `... control.py snapshot --profile <site>`  (returns title/text/controls JSON)
-  - `... control.py click|type|press|wait --profile <site> --selector <sel> [--value v] [--key k]`
-  - `... control.py screenshot --profile <site> --path <png>` then `Read` the PNG to SEE the page
-  - `... control.py stop --profile <site>` when done
-- `Read`/`Write` → recipes at `automations/browser-pilot/recipes/<site>.json`
+- `Bash` → the toolkit at `$PILOT_ROOT/control.py`. First start the
+  daemon, then issue one command per call (each `cd "$PILOT_ROOT" &&` first):
+  - `uv run python control.py serve --profile <site> &`  (headless by default; use `--headed` only when restarting for a CAPTCHA handoff — see Protocol step 4)
+  - `uv run python control.py open --profile <site> --url <URL>`
+  - `uv run python control.py snapshot --profile <site>`  (returns title/text/controls JSON)
+  - `uv run python control.py click|type|press|wait --profile <site> --selector <sel> [--value v] [--key k]`
+  - `uv run python control.py screenshot --profile <site> --path <png>` then `Read` the PNG to SEE the page
+  - `uv run python control.py stop --profile <site>` when done
+- `Read`/`Write` → recipes at `$PILOT_ROOT/recipes/<site>.json`
   (schema enforced by `recipes.py`) and run signals.
+- **`creds.py`** → site logins from the local credentials store:
+  `uv run python creds.py <site> --field username` (and `--field password`).
 - **`gmail_otp.py`** → read one-time codes from the OTP inbox via OAuth
   (works headless; the Claude Gmail connector is on a different account, so do NOT
-  use it). `uv run python automations/browser-pilot/gmail_otp.py --query '<gmail search>'`
+  use it). `uv run python gmail_otp.py --query '<gmail search>'`
   prints the 6-digit code (exit 1 if none yet); `--whoami` confirms the account.
 
 ## Protocol (every run)

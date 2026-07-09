@@ -21,13 +21,16 @@ Run this once per machine. The browser profile is persisted under
 
 ## Daemon / client usage
 
-The toolkit is a single file: `automations/browser-pilot/control.py`.
+The toolkit is a single file: `control.py` in this directory (the "pilot
+root" - installed machines can resolve it from
+`~/.claude/data/frontier-go-wild/pilot-root`). Run every command below from
+this directory so `uv` finds the `.venv`.
 Every command targets a named `--profile` (one profile = one isolated browser context).
 
 ### Start the daemon
 
 ```bash
-uv run python automations/browser-pilot/control.py serve --profile <site> [--headed]
+uv run python control.py serve --profile <site> [--headed]
 ```
 
 `--headed` opens a visible window (required for CAPTCHA handoffs, optional otherwise).
@@ -50,25 +53,25 @@ Run in the background (`&`) before issuing any other commands.
 
 ```bash
 # Start daemon (background)
-uv run python automations/browser-pilot/control.py serve --profile frontier &
+uv run python control.py serve --profile frontier &
 
 # Navigate and inspect
-uv run python automations/browser-pilot/control.py open --profile frontier --url https://www.flyfrontier.com
-uv run python automations/browser-pilot/control.py snapshot --profile frontier
+uv run python control.py open --profile frontier --url https://www.flyfrontier.com
+uv run python control.py snapshot --profile frontier
 
 # Screenshot to verify
-uv run python automations/browser-pilot/control.py screenshot --profile frontier --path /tmp/frontier.png
+uv run python control.py screenshot --profile frontier --path /tmp/frontier.png
 # Then Read /tmp/frontier.png in the agent
 
 # Stop when done
-uv run python automations/browser-pilot/control.py stop --profile frontier
+uv run python control.py stop --profile frontier
 ```
 
 ---
 
 ## Recipe schema
 
-Recipes live at `automations/browser-pilot/recipes/<site>.json`.
+Recipes live at `recipes/<site>.json` under the pilot root.
 Schema is enforced by `recipes.py`. Key fields:
 
 ```jsonc
@@ -103,8 +106,8 @@ central credentials store). This is pure OAuth+HTTP, so it works headless — it
 NOT use the Claude Gmail connector (that connector is authenticated to a different
 account and cannot read this inbox). No manual code entry required.
 
-    uv run python automations/browser-pilot/gmail_otp.py --query 'subject:"Frontier Passcode" newer_than:5m'   # prints the 6-digit code
-    uv run python automations/browser-pilot/gmail_otp.py --whoami                                              # confirms the account
+    uv run python gmail_otp.py --query 'subject:"Frontier Passcode" newer_than:5m'   # prints the 6-digit code
+    uv run python gmail_otp.py --whoami                                              # confirms the account
 
 ---
 
@@ -123,15 +126,3 @@ If the agent hits an unbeatable CAPTCHA or anti-bot challenge:
 `signals.py` emits structured outcome signals after each run (login success, selector
 fallbacks used, human handoff required). These feed the Agent Evolution system so
 weak spots get targeted for improvement.
-
----
-
-## Tests
-
-```bash
-uv run pytest automations/browser-pilot/tests -v
-```
-
-`test_agent_def.py` is a structural smoke test that asserts the agent definition
-exists at `~/.claude/agents/browser-pilot.md` with correct frontmatter and all
-protocol tokens present.

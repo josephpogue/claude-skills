@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# runlog - standardized run-logging helper (vendored with frontier-go-wild).
+# Emits append-only JSONL lifecycle events to $RUN_LOGS_DIR/<skill>/<run-id>.jsonl.
+# Verbs: start <skill> [--trigger T] [--meta k=v] | progress <id> <label> [--fraction F]
+#        | done <id> [--result P] | error <id> [--reason T]
+set -euo pipefail
+
+ROOT="${RUN_LOGS_DIR:-$HOME/.claude/run-logs}"
+SCHEMA_V=1
+RUNLOG_KEEP="${RUNLOG_KEEP:-50}"
+[[ "$RUNLOG_KEEP" =~ ^[0-9]+$ ]] || RUNLOG_KEEP=50
+
+_now() { date +%s; }
+_rand() { head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+
+_json_str() {
+  local s=${1//\\/\\\\}; s=${s//\"/\\\"}; s=${s//$'\n'/\\n}; s=${s//$'\t'/\\t}; s=${s//$'\r'/\\r}
+  printf '%s' "$s"
+}
+
+_run_file() { printf '%s/%s/%s.jsonl' "$ROOT" "$1" "$2"; }
+
+_append() {
+  mkdir -p "$(dirname "$1")"
+  printf '%s\n' "$2" >> "$1"
+}
+
+_prune() {
+  # Per skill dir, keep the newest $RUNLOG_KEEP terminal (done/error) runs; delete older terminal runs.
+  # Running runs (no terminal event) are never pruned.
+  [ -d "$ROOT" ] || return 0
+  for sd in "$ROOT"/*/; do
+    [ -d "$sd" ] || continue
+    # newest-first list of terminal run files, then drop the first N and delete the rest
+    # shellcheck disable=SC2012
+    ls -t "$sd"*.jsonl 2>/dev/null | while read -r f; do
+      if grep -qE '"event":"(done|error)"' "$f" 2>/dev/null; then printf '%s\n' "$f"; fi
+    done | tail -n +"$((RUNLOG_KEEP + 1))" | while read -r old; do
+      rm -f "$old"
+    done
+  done || true
+}
+
+_find_by_id() { find "$ROOT" -type f -name "$1.jsonl" 2>/dev/null | head -1; }
+
+cmd_start() {
+  local skill="${1:?skill id required}"; shift
+  # Trigger defaults to $RUNLOG_TRIGGER (set by launchers) then "manual"; --trigger overrides.
+  local trigger="${RUNLOG_TRIGGER:-manual}" meta=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --trigger) trigger="$2"; shift 2;;
+    --meta) meta="$2"; shift 2;;
+    *) shift;;
+  esac; done
+  # Identity, injected from the launcher so every writer for one run shares an id.
+  # If $RUNLOG_RUN_ID is set (dashboard route, skill-run, or any wrapper), adopt it
+  # instead of minting a fresh id — the launcher's row and this self-emit become the
+  # same run. Otherwise mint as before. A repeat start on an existing id just appends.
+  local rid; rid="${RUNLOG_RUN_ID:-$(date +%Y%m%d-%H%M%S)-$(_rand)}"
+  # Stamp the launching Claude session so a self-emitted run can be reconciled with
+  # its transcript twin (Skill-tool path). $RUNLOG_SESSION_ID overrides; otherwise
+  # inherit $CLAUDE_CODE_SESSION_ID, which Claude Code exports to tool subprocesses.
+  local sid="${RUNLOG_SESSION_ID:-${CLAUDE_CODE_SESSION_ID:-}}"
+  local file; file="$(_run_file "$skill" "$rid")"
+  local metajson="{}"
+  if [ -n "$meta" ]; then metajson="{\"$(_json_str "${meta%%=*}")\":\"$(_json_str "${meta#*=}")\"}"; fi
+  _append "$file" "{\"v\":$SCHEMA_V,\"run_id\":\"$rid\",\"skill\":\"$(_json_str "$skill")\",\"event\":\"start\",\"ts\":$(_now),\"trigger\":\"$(_json_str "$trigger")\",\"session_id\":\"$(_json_str "$sid")\",\"meta\":$metajson}"
+  _prune
+  printf '%s\n' "$rid"
+}
+
+cmd_progress() {
+  local rid="${1:?run-id required}"; shift
+  local label="${1:?label required}"; shift
+  local frac="null"
+  while [ $# -gt 0 ]; do case "$1" in --fraction) frac="$2"; shift 2;; *) shift;; esac; done
+  local file; file="$(_find_by_id "$rid")"; [ -z "$file" ] && return 0
+  local skill; skill="$(basename "$(dirname "$file")")"
+  _append "$file" "{\"v\":$SCHEMA_V,\"run_id\":\"$rid\",\"skill\":\"$(_json_str "$skill")\",\"event\":\"progress\",\"ts\":$(_now),\"progress\":{\"label\":\"$(_json_str "$label")\",\"fraction\":$frac}}"
+}
+
+cmd_term() {
+  local event="$1"; shift
+  local rid="${1:?run-id required}"; shift
+  local result="null" reason="null" meta=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --result) result="\"$(_json_str "$2")\""; shift 2;;
+    --reason) reason="\"$(_json_str "$2")\""; shift 2;;
+    --meta) meta="$2"; shift 2;;
+    *) shift;;
+  esac; done
+  local file; file="$(_find_by_id "$rid")"; [ -z "$file" ] && return 0
+  local skill; skill="$(basename "$(dirname "$file")")"
+  local metajson="{}"
+  if [ -n "$meta" ]; then metajson="{\"$(_json_str "${meta%%=*}")\":\"$(_json_str "${meta#*=}")\"}"; fi
+  _append "$file" "{\"v\":$SCHEMA_V,\"run_id\":\"$rid\",\"skill\":\"$(_json_str "$skill")\",\"event\":\"$event\",\"ts\":$(_now),\"result\":$result,\"reason\":$reason,\"meta\":$metajson}"
+}
+
+cmd_wrap() {
+  local skill="" trigger="scheduled"
+  while [ $# -gt 0 ]; do case "$1" in
+    --skill) skill="$2"; shift 2;;
+    --trigger) trigger="$2"; shift 2;;
+    --) shift; break;;
+    *) shift;;
+  esac; done
+  [ -z "$skill" ] && { echo "runlog wrap: --skill required" >&2; exit 2; }
+  local rid; rid="$(cmd_start "$skill" --trigger "$trigger")"
+  set +e
+  "$@"
+  local rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then cmd_term done "$rid"; else cmd_term error "$rid" --reason "exit $rc"; fi
+  return "$rc"
+}
+
+case "${1:-}" in
+  start)    shift; cmd_start "$@";;
+  progress) shift; cmd_progress "$@";;
+  done)     shift; cmd_term done "$@";;
+  error)    shift; cmd_term error "$@";;
+  wrap)     shift; cmd_wrap "$@";;
+  *) echo "usage: runlog {start|progress|done|error|wrap} ..." >&2; exit 2;;
+esac

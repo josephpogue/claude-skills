@@ -16,6 +16,17 @@ else
   PILOT="$HOME/.claude/tools/browser-pilot"
 fi
 
+# runlog: the skill's run-logging heartbeat helper. Vendored; only installed
+# when the machine doesn't already have one (keeps a live My-Life symlink).
+if [ ! -e "$HOME/.local/bin/runlog" ]; then
+  echo "→ runlog → ~/.local/bin/runlog"
+  mkdir -p "$HOME/.local/bin"
+  cp "$HERE/bin/runlog" "$HOME/.local/bin/runlog"
+  chmod +x "$HOME/.local/bin/runlog"
+else
+  echo "✓ runlog already present"
+fi
+
 echo "→ agent  → ~/.claude/agents/browser-pilot.md"
 mkdir -p "$HOME/.claude/agents"
 cp "$HERE/agent/browser-pilot.md" "$HOME/.claude/agents/browser-pilot.md"
@@ -54,7 +65,10 @@ else
   echo "✓ [logins.frontier] already present"
 fi
 
-cat <<'MSG'
+# Fixed, non-personal namespace that the vendored gmail_otp.py reads by default.
+NS="frontier_otp_gmail"
+if ! grep -q "^\[google.$NS\]" "$STORE"; then
+  cat <<'MSG'
 
 Gmail OTP reader: Frontier emails a 6-digit code at login; the skill reads it
 via the Gmail API. It needs a Google OAuth client with gmail.readonly scope
@@ -63,10 +77,7 @@ and a refresh token for the inbox that receives Frontier codes.
 https://developers.google.com/oauthplayground with scope
 https://www.googleapis.com/auth/gmail.readonly)
 MSG
-read -rp "  gmail address: " G_EMAIL
-# Fixed, non-personal namespace that the vendored gmail_otp.py reads by default.
-NS="frontier_otp_gmail"
-if ! grep -q "^\[google.$NS\]" "$STORE"; then
+  read -rp "  gmail address: " G_EMAIL
   read -rp "  client_id: " G_ID
   read -rp "  client_secret: " G_SECRET
   read -rp "  refresh_token: " G_REFRESH

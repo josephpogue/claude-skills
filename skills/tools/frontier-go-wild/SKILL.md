@@ -31,8 +31,8 @@ day grids.
 - `destinations` - a LIST of raw tokens, each one of:
   - a specific city (IATA code or city name): `SFO`, `Boston`
   - a state: `wisconsin` (expands to its Frontier airports, e.g. MKE, MSN)
-  - a semantic group: `east-coast`, `beach`, `ski`, `florida`, `caribbean`,
-    `midwest`, `west`, `texas`, `northeast` (see resolution below)
+  - a semantic group: `east-coast`, `west-coast`, `beach`, `ski`, `florida`,
+    `caribbean`, `midwest`, `west`, `texas`, `northeast` (see resolution below)
   - back-compat: a legacy single `destination` arg is treated as
     `destinations: [destination]`
 - date or date range (`dateStart` … `dateEnd`)
@@ -100,9 +100,13 @@ proceed - never shrink the plan up front.
 
 ## Run logging (heartbeat)
 
-Self-emit lifecycle events so Mission Control can tell a working run from a
-stalled one (absolute path - launchd PATH may be bare). Find the active run id
-first: `$RUNLOG_RUN_ID` if set, else the newest
+Self-emit lifecycle events so a dashboard (e.g. Mission Control) can tell a
+working run from a stalled one (absolute path - launchd PATH may be bare). The
+`runlog` helper ships with this skill: `setup.sh` installs the vendored copy
+(`bin/runlog`) to `~/.local/bin/runlog` when the machine has none. If
+`~/.local/bin/runlog` is somehow still missing at run time, skip run-logging
+and continue the search - never fail a run over the heartbeat. Find the active
+run id first: `$RUNLOG_RUN_ID` if set, else the newest
 `~/.claude/run-logs/frontier-go-wild/*.jsonl` containing a `start` but no
 `done`/`error`; only if neither exists,
 `rid=$(~/.local/bin/runlog start frontier-go-wild --trigger "${RUNLOG_TRIGGER:-manual}")`.
@@ -139,7 +143,9 @@ header above).
    (`serve --profile frontier --headless --state $PILOT_ROOT/state/frontier.json`),
    confirm it's logged in (snapshot shows "Hi, <account> / a miles balance"), and -
    only if it's logged out ("log in | sign up") - re-login via the recipe (creds
-   `secrets.load('frontier')`, OTP `gmail_otp.py`) and `save_state` to refresh
+   from the vendored `creds.py` - `uv run python creds.py frontier --field
+   username` / `--field password` from `$PILOT_ROOT`; OTP `gmail_otp.py`) and
+   `save_state` to refresh
    `state/frontier.json`. This guarantees a single fresh auth file before any
    fan-out, so the parallel workers never trigger competing OTP logins.
 

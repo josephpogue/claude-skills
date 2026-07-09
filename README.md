@@ -13,9 +13,9 @@ npx skills add josephpogue/claude-skills --skill=frontier-go-wild
 npx skills update frontier-go-wild
 ```
 
-`npx skills` (the [skills.sh](https://skills.sh) standard) copies the skill
-folder into `~/.claude/skills/`. That is a complete install for pure-prompt
-skills. Skills that drive a browser or need credentials ship a companion
+`npx skills` (the [skills.sh](https://skills.sh) standard) installs the skill
+folder under `~/.agents/skills/` and symlinks it into `~/.claude/skills/`.
+That is a complete install for pure-prompt skills. Skills that drive a browser or need credentials ship a companion
 `setup-*` skill you run once after install (see below).
 
 ## Skills

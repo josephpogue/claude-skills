@@ -8,14 +8,6 @@ import json
 import os
 import sys
 import time
-from pathlib import Path
-
-# Ensure 'shared.browser' (from flight-search) is importable when this script
-# is run as a subprocess (conftest.py only covers the pytest process).
-_HERE = Path(__file__).resolve().parent
-_FLIGHT_SEARCH = _HERE.parent / "flight-search"
-if str(_FLIGHT_SEARCH) not in sys.path:
-    sys.path.insert(0, str(_FLIGHT_SEARCH))
 
 from session import BrowserSession
 

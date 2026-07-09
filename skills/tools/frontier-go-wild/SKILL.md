@@ -11,11 +11,50 @@ contents of `~/.claude/data/frontier-go-wild/pilot-root` if that file exists,
 else `~/Documents/GitHub/My-Life/automations/browser-pilot`, else
 `~/.claude/tools/browser-pilot`. Recipes are at `$PILOT_ROOT/recipes/`, shared
 auth state at `$PILOT_ROOT/state/frontier.json`, and workers run `control.py`
-from `$PILOT_ROOT`. New-machine install: run the `/setup-frontier-go-wild`
-skill (or `bash setup.sh` in this folder). It installs the vendored toolkit and
-agent that ship alongside this skill and collects the two manual inputs — the
-Frontier login and a Gmail OAuth client for the OTP reader, both landing in
+from `$PILOT_ROOT`. New-machine install: run `bash setup.sh` in this folder (see
+**Setup** below). It installs the vendored toolkit and agent that ship alongside
+this skill and collects the two manual inputs — the Frontier login and a Gmail
+OAuth client for the OTP reader, both landing in
 `~/.config/credentials/store.toml`.
+
+## Setup (one-time, per machine)
+
+This is not a pure-prompt skill: it drives a real headless browser into
+frontier.com, and Frontier requires a login plus a one-time passcode (OTP) on
+every fresh session. Installing the skill folder copies the instructions **and**
+the installer — everything setup needs ships in this one folder. On an
+already-configured machine you can skip this entirely.
+
+On a fresh machine, run the bundled installer once:
+
+```bash
+bash ~/.claude/skills/frontier-go-wild/setup.sh
+```
+
+It is idempotent and skips anything already in place. It installs `uv`, the
+`browser-pilot` toolkit (`control.py` daemon + Frontier recipe + Chromium),
+records `$PILOT_ROOT` in `~/.claude/data/frontier-go-wild/pilot-root`, drops the
+`browser-pilot` agent definition, then prompts for two credentials (written only
+to the local, `chmod 600` `~/.config/credentials/store.toml`, never committed):
+
+1. **Frontier login** — the account email + password whose Go Wild pass you are
+   searching. Lands in `[logins.frontier]`.
+2. **Gmail OTP reader** — required because Frontier emails a fresh 6-digit code
+   at every login. For the inbox that receives those codes you need a Google
+   Cloud project with the **Gmail API enabled**, an **OAuth client** (id +
+   secret), and a **refresh token** minted with scope
+   `https://www.googleapis.com/auth/gmail.readonly` (e.g. via the
+   [OAuth Playground](https://developers.google.com/oauthplayground)). Paste the
+   client id, secret, refresh token, and Gmail address when prompted; they land
+   in `[google.frontier_otp_gmail]`. **The OTP reader is Gmail-only today** — if
+   your Frontier codes arrive at a non-Gmail address, this path needs adapting.
+
+The installer finishes with a headless smoke test ("browser toolkit works"). If
+it fails, the usual cause is the Chromium install; re-run it. The first real
+search then warms the session with one OTP email (~1-2 minutes) and caches the
+login; later runs reuse the warm session and only re-authenticate every
+~20-25 minutes. If a run ever reports it needs a headed re-login, do one
+interactive login and it re-caches.
 
 Given a Frontier origin, a destination list (specific cities, states, and/or
 semantic groups), a date (or date range), and routing constraints, produce a

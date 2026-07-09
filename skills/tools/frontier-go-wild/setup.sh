@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Onboard the frontier-go-wild skill: install its vendored browser toolkit +
-# agent and collect the two credentials it needs. Idempotent — re-running skips
-# anything already in place. This file ships beside SKILL.md, so $HERE is the
-# installed skill folder itself. Run: bash setup.sh
+# agent. No credentials needed — Go Wild availability reads off the public
+# booking page logged out. Idempotent — re-running skips anything already in
+# place. This file ships beside SKILL.md, so $HERE is the installed skill folder
+# itself. Run: bash setup.sh
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)   # the installed skill folder
@@ -49,44 +50,9 @@ fi
 echo "→ python deps + chromium (first time takes a few minutes)…"
 ( cd "$PILOT" && uv sync --quiet && uv run patchright install chromium )
 
-# ── secrets (the only manual inputs) ─────────────────────────────────────────
-STORE="$HOME/.config/credentials/store.toml"
-mkdir -p "$HOME/.config/credentials"
-touch "$STORE"; chmod 600 "$STORE"
-
-if ! grep -q '^\[logins.frontier\]' "$STORE"; then
-  echo
-  echo "Frontier account login (stored locally in $STORE):"
-  read -rp  "  username (email): " F_USER
-  read -rsp "  password: " F_PASS; echo
-  printf '\n[logins.frontier]\nusername = "%s"\npassword = "%s"\n' "$F_USER" "$F_PASS" >> "$STORE"
-  echo "  ✓ [logins.frontier] written"
-else
-  echo "✓ [logins.frontier] already present"
-fi
-
-# Fixed, non-personal namespace that the vendored gmail_otp.py reads by default.
-NS="frontier_otp_gmail"
-if ! grep -q "^\[google.$NS\]" "$STORE"; then
-  cat <<'MSG'
-
-Gmail OTP reader: Frontier emails a 6-digit code at login; the skill reads it
-via the Gmail API. It needs a Google OAuth client with gmail.readonly scope
-and a refresh token for the inbox that receives Frontier codes.
-(Google Cloud Console → OAuth client, then mint a refresh token, e.g. via
-https://developers.google.com/oauthplayground with scope
-https://www.googleapis.com/auth/gmail.readonly)
-MSG
-  read -rp "  gmail address: " G_EMAIL
-  read -rp "  client_id: " G_ID
-  read -rp "  client_secret: " G_SECRET
-  read -rp "  refresh_token: " G_REFRESH
-  printf '\n[google.%s]\nclient_id = "%s"\nclient_secret = "%s"\nrefresh_token = "%s"\nemail = "%s"\nscope = "https://www.googleapis.com/auth/gmail.readonly"\n' \
-    "$NS" "$G_ID" "$G_SECRET" "$G_REFRESH" "$G_EMAIL" >> "$STORE"
-  echo "  ✓ [google.$NS] written"
-else
-  echo "✓ [google.$NS] already present"
-fi
+# No credentials needed: Go Wild availability reads off the public booking page
+# for logged-out visitors (verified 2026-07-09), so there is no Frontier login
+# and no Gmail OTP reader to collect.
 
 # ── smoke test ───────────────────────────────────────────────────────────────
 echo
@@ -105,5 +71,5 @@ echo "→ smoke test: headless browser round-trip…"
 )
 
 echo
-echo "✓ setup complete. First real run warms the Frontier session (one OTP email)."
+echo "✓ setup complete. No login needed - the first run just works."
 echo "  Try: claude, then ask for 'frontier go wild ATL to Boston next weekend'."

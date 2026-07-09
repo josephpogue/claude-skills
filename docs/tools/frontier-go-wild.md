@@ -20,18 +20,17 @@ into frontier.com, so it reports only real availability and never invents fares.
 
 ## Before you run it
 
-This is not a pure-prompt skill. It needs a browser toolkit and two
-credentials, all bundled in the skill folder. On a new machine, run the
-included installer once:
+This is not a pure-prompt skill. It needs a browser toolkit, bundled in the
+skill folder. On a new machine, run the included installer once:
 
 ```bash
 bash ~/.claude/skills/frontier-go-wild/setup.sh
 ```
 
-It installs the browser toolkit and collects your Frontier login plus a Gmail
-OAuth client for reading the login OTP. All credentials stay in your local
-`~/.config/credentials/store.toml`. See the **Setup** section of the skill for
-the full walkthrough.
+It installs the browser toolkit (and Chromium) and runs a smoke test. There's
+**no login and no credentials** - Go Wild availability reads off frontier.com's
+public booking page logged out. See the **Setup** section of the skill for
+details.
 
 ## Run it
 

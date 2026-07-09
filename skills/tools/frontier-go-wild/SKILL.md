@@ -9,21 +9,22 @@ description: Find Go Wild seat availability day-by-day for a Frontier origin and
 `browser-pilot` path in this document means `$PILOT_ROOT`. Resolve it as: the
 contents of `~/.claude/data/frontier-go-wild/pilot-root` if that file exists,
 else `~/Documents/GitHub/My-Life/automations/browser-pilot`, else
-`~/.claude/tools/browser-pilot`. Recipes are at `$PILOT_ROOT/recipes/`, shared
-auth state at `$PILOT_ROOT/state/frontier.json`, and workers run `control.py`
-from `$PILOT_ROOT`. New-machine install: run `bash setup.sh` in this folder (see
-**Setup** below). It installs the vendored toolkit and agent that ship alongside
-this skill and collects the two manual inputs — the Frontier login and a Gmail
-OAuth client for the OTP reader, both landing in
-`~/.config/credentials/store.toml`.
+`~/.claude/tools/browser-pilot`. Recipes are at `$PILOT_ROOT/recipes/` and
+workers run `control.py` from `$PILOT_ROOT`. New-machine install: run
+`bash setup.sh` in this folder (see **Setup** below). It installs the vendored
+toolkit and agent that ship alongside this skill — **no login and no
+credentials**, since Go Wild availability reads straight off the public booking
+page for logged-out visitors.
 
 ## Setup (one-time, per machine)
 
 This is not a pure-prompt skill: it drives a real headless browser into
-frontier.com, and Frontier requires a login plus a one-time passcode (OTP) on
-every fresh session. Installing the skill folder copies the instructions **and**
-the installer — everything setup needs ships in this one folder. On an
-already-configured machine you can skip this entirely.
+frontier.com's public booking page to read Go Wild availability. It needs the
+browser toolkit installed, but **no login and no credentials** — the Go Wild
+fare grid renders for logged-out visitors (verified 2026-07-09). Installing the
+skill folder copies the instructions **and** the installer; everything setup
+needs ships in this one folder. On an already-configured machine you can skip
+this entirely.
 
 On a fresh machine, run the bundled installer once:
 
@@ -34,27 +35,10 @@ bash ~/.claude/skills/frontier-go-wild/setup.sh
 It is idempotent and skips anything already in place. It installs `uv`, the
 `browser-pilot` toolkit (`control.py` daemon + Frontier recipe + Chromium),
 records `$PILOT_ROOT` in `~/.claude/data/frontier-go-wild/pilot-root`, drops the
-`browser-pilot` agent definition, then prompts for two credentials (written only
-to the local, `chmod 600` `~/.config/credentials/store.toml`, never committed):
-
-1. **Frontier login** — the account email + password whose Go Wild pass you are
-   searching. Lands in `[logins.frontier]`.
-2. **Gmail OTP reader** — required because Frontier emails a fresh 6-digit code
-   at every login. For the inbox that receives those codes you need a Google
-   Cloud project with the **Gmail API enabled**, an **OAuth client** (id +
-   secret), and a **refresh token** minted with scope
-   `https://www.googleapis.com/auth/gmail.readonly` (e.g. via the
-   [OAuth Playground](https://developers.google.com/oauthplayground)). Paste the
-   client id, secret, refresh token, and Gmail address when prompted; they land
-   in `[google.frontier_otp_gmail]`. **The OTP reader is Gmail-only today** — if
-   your Frontier codes arrive at a non-Gmail address, this path needs adapting.
-
-The installer finishes with a headless smoke test ("browser toolkit works"). If
-it fails, the usual cause is the Chromium install; re-run it. The first real
-search then warms the session with one OTP email (~1-2 minutes) and caches the
-login; later runs reuse the warm session and only re-authenticate every
-~20-25 minutes. If a run ever reports it needs a headed re-login, do one
-interactive login and it re-caches.
+`browser-pilot` agent definition, and finishes with a headless smoke test
+("browser toolkit works"). If it fails, the usual cause is the Chromium install;
+re-run it. There are no credential prompts and nothing to warm — the first
+search just works.
 
 Given a Frontier origin, a destination list (specific cities, states, and/or
 semantic groups), a date (or date range), and routing constraints, produce a
@@ -87,11 +71,11 @@ day grids.
   you get. Destinations not yet started when the cap expires are reported
   `unsearched` - visible, never silently dropped.
 - `workers` - parallel browser workers per wave (default **8**). Auto-backoff:
-  if a wave hits a captcha/block page or 2+ workers report logged-out, halve
-  the fleet (floor 2) for later waves instead of aborting, and note the
-  backoff in a progress event. Go above 8 only when the user explicitly asks -
-  more parallel scrapers on one set of cookies = more anti-bot risk on the
-  account. Measured limit (2026-07-08 ramp test, 24 GB / 14-core Mac): 16
+  if a wave hits a captcha/block page, halve the fleet (floor 2) for later
+  waves instead of aborting, and note the backoff in a progress event. Go above
+  8 only when the user explicitly asks - more parallel scrapers = more anti-bot
+  risk (though runs are logged out, so there is no account to protect).
+  Measured limit (2026-07-08 ramp test, 24 GB / 14-core Mac): 16
   workers ran clean; 32 collapsed the fleet via RAM exhaustion (9.7 GB swap,
   daemons crashing) with ZERO anti-bot signals - the binding ceiling is
   machine memory, not Frontier. Treat 16 as the hard max on this machine.
@@ -132,10 +116,10 @@ origin is marked `unserved: true` in the result - visible, not dropped.
 
 **Estimate before running:** searches = resolved destinations × days. At ~45-75s
 of worker time per search across `workers` parallel workers, wall-clock ≈
-searches/workers minutes (+ ~2 min warm-up), with a session re-warm expected
-roughly every ~20-25 min. If a cap is set and the estimate exceeds it, emit a
-progress event saying how many destinations should complete before expiry and
-proceed - never shrink the plan up front.
+searches/workers minutes (no warm-up, no session to re-warm). If a cap is set
+and the estimate exceeds it, emit a progress event saying how many destinations
+should complete before the cap expires and proceed - never shrink the plan up
+front.
 
 ## Run logging (heartbeat)
 
@@ -150,7 +134,7 @@ run id first: `$RUNLOG_RUN_ID` if set, else the newest
 `done`/`error`; only if neither exists,
 `rid=$(~/.local/bin/runlog start frontier-go-wild --trigger "${RUNLOG_TRIGGER:-manual}")`.
 
-- After EVERY wave and every re-warm:
+- After EVERY wave:
   `~/.local/bin/runlog progress "$rid" "<label>" --fraction <searchesDone/searchesTotal>`
   with a label like `"BOS done | 3/12 dests | 41/120 searches | 2 requeued"`.
 - If the launcher did not log `done`/`error` itself, emit `done` (with a one-line
@@ -177,16 +161,13 @@ on without row parsing. The saved recipe is at
 `$PILOT_ROOT/recipes/frontier.json` (resolve `$PILOT_ROOT` per the portability
 header above).
 
-1. **Warm one shared session first (one login, never N in parallel).** Dispatch
-   a single `browser-pilot` to start a daemon with the saved session
-   (`serve --profile frontier --headless --state $PILOT_ROOT/state/frontier.json`),
-   confirm it's logged in (snapshot shows "Hi, <account> / a miles balance"), and -
-   only if it's logged out ("log in | sign up") - re-login via the recipe (creds
-   from the vendored `creds.py` - `uv run python creds.py frontier --field
-   username` / `--field password` from `$PILOT_ROOT`; OTP `gmail_otp.py`) and
-   `save_state` to refresh
-   `state/frontier.json`. This guarantees a single fresh auth file before any
-   fan-out, so the parallel workers never trigger competing OTP logins.
+1. **No login, no shared session - go straight to the public booking page.**
+   The Go Wild fare grid renders for logged-out visitors, so there is no
+   warm-up, no OTP, and no shared auth state to manage. Each worker just starts
+   its own fresh headless daemon (`serve --profile frontier-w{i} --headless`,
+   no `--state`) and hits the deep link directly. Verified 2026-07-09: the
+   `GoWild!™` fare grid loads and shows real per-flight availability with no
+   account (ATL→MCO/LAS/DEN spot checks). Skip straight to the fan-out.
 
 2. **Fan out DESTINATION-MAJOR, in waves of ≤ `workers` parallel
    `browser-pilot` workers.** Treat the resolved list as an ordered QUEUE:
@@ -204,13 +185,9 @@ header above).
    - on the **Haiku** model (the per-date scrape+parse is mechanical; the cheap
      model does the token-heavy browser work, this orchestrator stays on its
      model to assemble);
-   - with its **own profile** `frontier-w{i}` but restoring the **shared**
-     `--state .../state/frontier.json` - different profiles = independent
-     daemons/sockets, same auth cookies, so all are logged in from the one warm
-     session;
-   - told to **NOT attempt an OTP re-login** - the session is already warm. If
-     a worker finds itself logged out, it must report that and stop, not log in
-     (so N workers can never OTP-storm the account);
+   - with its **own fresh headless profile** `frontier-w{i}` and **no `--state`**
+     - workers run logged out; independent daemons/sockets, no shared cookies to
+     coordinate;
    - told to read each date through the recipe flow (deep link → GoWild pill →
      snapshot) and parse the snapshot with judgment. Do NOT write ad-hoc
      scraper scripts - regex-over-snapshot parsing loses flight numbers and
@@ -236,14 +213,11 @@ header above).
      within the page - destination state drifts) and to verify the header
      shows the assigned city pair before parsing.
 
-   **Wave checkpoint (this is how long runs survive):** between waves, the
-   orchestrator health-checks the shared session (cheap snapshot). If it has
-   expired, the orchestrator re-warms it exactly as in step 1 - ONE serialized
-   re-login + `save_state` - before dispatching the next wave. Re-warms are
-   normal on runs past ~20-25 min: a long run costs an extra OTP email or two,
-   serialized, never parallel. If a worker reports logged-out mid-wave, absorb
-   that wave's losses, re-warm at the checkpoint, and re-run only the missing
-   (destination, date) pairs in the next wave.
+   **Wave checkpoint:** workers are stateless and logged out, so there is no
+   session to expire or re-warm between waves - just keep dispatching waves
+   until the queue drains. If a worker dies or a date comes back flaky, absorb
+   that wave's losses and re-queue only the missing (destination, date) pairs in
+   the next wave.
 
    **Each worker does ONE search per date - `origin → destination`
    directly.** Frontier's results page already lists the nonstops AND the
@@ -298,13 +272,11 @@ header above).
    can't be done, still emit results but set `blackoutMeta.stale: true` -
    never silently drop the check.
 
-**Reliability:** Frontier sessions are short-lived, so the warm-up in step 1
-often has to re-login (~1-2 min OTP) - that's normal, not a failure. On
-multi-wave runs, expect a re-warm roughly every 20-25 minutes at a wave
-checkpoint; that is designed-for behavior, not an error. A single worker dying
-(or reporting logged-out) must not sink the run: take what returned, re-warm,
-and keep re-queuing the missing (destination, date) pairs at each wave
-checkpoint until they fetch or the cap expires. Still emit valid JSON covering
+**Reliability:** there is no login or session to manage, so runs never stall on
+auth - a stuck worker just re-issues the deep link. A single worker dying or a
+flaky date must not sink the run: take what returned and keep re-queuing the
+missing (destination, date) pairs at each wave until they fetch or the cap
+expires. Still emit valid JSON covering
 **every** resolved destination and **every** date in the range. A date that
 was never actually fetched is `available: false` PLUS `"unfetched": true` and
 a `note` - never disguised as a searched no-availability day. A destination
@@ -363,7 +335,8 @@ destination scoreboard, per-destination day grids, blackout flags, and the
 
 ## If the lookup can't run
 
-If login/availability can't be retrieved (e.g. the browser session needs a
-one-time headed re-login), do **not** emit fake data. Instead return a short,
-plain explanation of what blocked it and what's needed - the Mission Control
-page surfaces that message to the user instead of showing a blank panel.
+If availability can't be retrieved (e.g. the booking page is blocking headless
+traffic with a captcha, or the toolkit isn't installed), do **not** emit fake
+data. Instead return a short, plain explanation of what blocked it and what's
+needed - the Mission Control page surfaces that message to the user instead of
+showing a blank panel.

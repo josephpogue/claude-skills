@@ -8,7 +8,7 @@ npx skills add josephpogue/claude-skills --skill=frontier-go-wild
 npx skills update frontier-go-wild
 ```
 
-[Source](https://github.com/josephpogue/claude-skills/tree/main/skills/tools/frontier-go-wild)
+[Source](https://github.com/josephpogue/claude-skills/tree/main/skills/frontier-go-wild)
 
 ## What it does
 

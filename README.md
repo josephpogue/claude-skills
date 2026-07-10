@@ -24,7 +24,7 @@ That is a complete install for pure-prompt skills. Skills that drive a browser o
 
 | Skill | What it does | Setup |
 |-------|--------------|-------|
-| [`frontier-go-wild`](./skills/tools/frontier-go-wild/README.md) | Find Frontier Go Wild seat availability day-by-day for an origin and many destinations, ranked by fee. | Run `bash setup.sh` in the skill folder once on a new machine (browser toolkit only — no login or credentials). |
+| [`frontier-go-wild`](./skills/frontier-go-wild/README.md) | Find Frontier Go Wild seat availability day-by-day for an origin and many destinations, ranked by fee. | Run `bash setup.sh` in the skill folder once on a new machine (browser toolkit only — no login or credentials). |
 
 ## Layout
 

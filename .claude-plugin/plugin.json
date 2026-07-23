@@ -2,6 +2,7 @@
   "name": "claude-skills",
   "description": "Joseph Pogue's Claude Code skills.",
   "skills": [
+    "./skills/case-interviewer",
     "./skills/frontier-go-wild"
   ]
 }

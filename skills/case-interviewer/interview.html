@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{CASE_TITLE}} - Case interview</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --panel: #ffffff;
+    --ink: #1c2530;
+    --muted: #5c6a7c;
+    --line: #dde3ec;
+    --accent: #2f6df0;
+    --accent-soft: #e8f0ff;
+    --candidate: #eef1f6;
+    --exhibit: #f7faff;
+    --good: #1f9d63;
+    --warn: #c9761b;
+    --bad: #cc3b3b;
+    --shadow: 0 1px 3px rgba(28,37,48,.08), 0 6px 20px rgba(28,37,48,.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 14px 22px; display: flex; align-items: center; gap: 16px;
+    position: sticky; top: 0; z-index: 5;
+  }
+  header .title { font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  header .chip {
+    display: inline-block; background: var(--accent-soft); color: var(--accent);
+    border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600;
+    margin-left: 6px; text-transform: capitalize;
+  }
+  header .timer { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+  main {
+    flex: 1; width: 100%; max-width: 900px; margin: 0 auto;
+    padding: 22px 18px 150px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .turn { display: flex; }
+  .turn.candidate { justify-content: flex-end; }
+  .bubble {
+    max-width: 76%; padding: 11px 15px; border-radius: 14px; box-shadow: var(--shadow);
+    white-space: pre-wrap; word-wrap: break-word; font-size: 15px; line-height: 1.55;
+  }
+  .turn.interviewer .bubble { background: var(--panel); border-bottom-left-radius: 4px; }
+  .turn.candidate .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .turn .who { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); margin: 0 6px 4px; }
+  .turn.candidate .who { text-align: right; }
+  .hintline .bubble { background: #fff7e8; color: #6b4a12; border: 1px solid #f0dcae; }
+
+  .exhibit {
+    background: var(--exhibit); border: 1px solid #d6e2fb; border-radius: 14px;
+    box-shadow: var(--shadow); overflow: hidden; align-self: stretch; max-width: 100%;
+  }
+  .exhibit .ex-head {
+    background: #eaf2ff; border-bottom: 1px solid #d6e2fb; padding: 9px 16px;
+    font-weight: 650; font-size: 14px; color: #1b3a73; display: flex; align-items: center; gap: 8px;
+  }
+  .exhibit .ex-head .tag {
+    background: var(--accent); color: #fff; border-radius: 6px; font-size: 11px;
+    padding: 1px 8px; font-weight: 700; letter-spacing: .03em;
+  }
+  .exhibit .ex-body { padding: 8px 16px 14px; font-size: 14px; overflow-x: auto; }
+  .exhibit table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13.5px; }
+  .exhibit th, .exhibit td { border: 1px solid #cdd9ee; padding: 6px 11px; text-align: left; }
+  .exhibit th { background: #e4edfc; font-weight: 650; }
+  .exhibit img { max-width: 100%; border-radius: 8px; margin: 8px 0; cursor: zoom-in; display: block; }
+
+  footer {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel);
+    border-top: 1px solid var(--line); padding: 12px 18px; z-index: 6;
+  }
+  .composer { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+  .composer .row { display: flex; gap: 8px; align-items: flex-end; }
+  textarea#input {
+    flex: 1; resize: none; border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 14px; font: inherit; font-size: 15px; min-height: 46px; max-height: 160px;
+    background: #fbfcfe; color: var(--ink);
+  }
+  textarea#input:focus { outline: none; border-color: var(--accent); background: #fff; }
+  button {
+    font: inherit; font-weight: 600; border: none; border-radius: 10px; cursor: pointer;
+    padding: 10px 16px; font-size: 14px; transition: filter .12s, background .12s;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .btn-send { background: var(--accent); color: #fff; }
+  .btn-ghost { background: var(--accent-soft); color: var(--accent); }
+  .btn-neutral { background: #eef1f6; color: var(--ink); }
+  .btn-end { background: #fdecec; color: var(--bad); }
+  button:not(:disabled):hover { filter: brightness(.96); }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  .dropnote { font-size: 12px; color: var(--muted); }
+  body.dragging main::after {
+    content: "Drop your notes or a chart to share it"; position: fixed; inset: 60px 18px 120px;
+    border: 2px dashed var(--accent); border-radius: 18px; background: rgba(47,109,240,.06);
+    display: flex; align-items: center; justify-content: center; color: var(--accent);
+    font-weight: 650; font-size: 18px; z-index: 20; pointer-events: none;
+  }
+  .typing .bubble { color: var(--muted); font-style: italic; }
+
+  /* scorecard */
+  .scorecard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--shadow); padding: 22px; align-self: stretch;
+  }
+  .scorecard h2 { margin: 0 0 4px; font-size: 22px; letter-spacing: -.01em; }
+  .verdict-tier { display: inline-block; padding: 4px 14px; border-radius: 999px; font-weight: 700;
+    font-size: 14px; margin: 4px 0 10px; }
+  .tier-strong { background: #e3f6ec; color: var(--good); }
+  .tier-hire { background: #e8f0ff; color: var(--accent); }
+  .tier-borderline { background: #fff3e0; color: var(--warn); }
+  .tier-no { background: #fdecec; color: var(--bad); }
+  .client-test { color: var(--muted); font-size: 14.5px; margin-bottom: 18px; }
+  .dim { border-top: 1px solid var(--line); padding: 14px 0; }
+  .dim-head { display: flex; align-items: baseline; gap: 10px; }
+  .dim-head .name { font-weight: 650; font-size: 15.5px; }
+  .dim-head .weight { color: var(--muted); font-size: 12.5px; }
+  .dim-head .score { margin-left: auto; font-weight: 750; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .bar { height: 7px; border-radius: 4px; background: #edf1f7; margin: 8px 0 10px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .dim ul { margin: 4px 0 0; padding-left: 20px; }
+  .dim li { font-size: 13.5px; color: #34404e; margin: 3px 0; }
+  .gates { background: #f7f9fc; border-radius: 12px; padding: 12px 16px; margin: 16px 0; }
+  .gates h3, .strong h3, .drills h3 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0 0 8px; }
+  .gates div { font-size: 13.5px; margin: 4px 0; }
+  .gates b { color: var(--ink); }
+  .strong { margin-top: 18px; }
+  .strong .md { font-size: 14px; line-height: 1.6; }
+  .strong .md table { border-collapse: collapse; margin: 8px 0; }
+  .strong .md th, .strong .md td { border: 1px solid var(--line); padding: 5px 10px; font-size: 13px; }
+  .strong .md h1, .strong .md h2, .strong .md h3, .strong .md h4 { font-size: 15px; margin: 14px 0 4px; }
+  .strong .md code { background: #eef1f6; padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }
+  .drills { margin-top: 18px; }
+  .drills ol { margin: 0; padding-left: 20px; }
+  .drills li { font-size: 14px; margin: 5px 0; }
+  .saved { margin-top: 18px; padding: 10px 14px; background: #e3f6ec; color: var(--good);
+    border-radius: 10px; font-size: 13.5px; }
+  .lightbox { position: fixed; inset: 0; background: rgba(16,22,30,.82); display: none;
+    align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; }
+  .lightbox img { max-width: 94%; max-height: 94%; border-radius: 8px; }
+  .lightbox.on { display: flex; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="title">{{CASE_TITLE}}</div>
+    <div class="meta">
+      <span class="chip">{{CASE_STYLE}}</span>
+      <span class="chip">{{CASE_DIFFICULTY}}</span>
+    </div>
+  </div>
+  <div class="timer" id="timer">00:00</div>
+</header>
+
+<main id="stream"></main>
+
+<footer>
+  <div class="composer">
+    <div class="row">
+      <textarea id="input" placeholder="Talk to your interviewer... (Enter to send, Shift+Enter for a new line)" rows="1"></textarea>
+      <button class="btn-send" id="send">Send</button>
+    </div>
+    <div class="toolbar">
+      <button class="btn-neutral" id="uploadBtn">Share notes / chart</button>
+      <button class="btn-ghost" id="hintBtn">Ask for a hint</button>
+      <span class="spacer"></span>
+      <span class="dropnote">Drag an image anywhere to share it</span>
+      <button class="btn-end" id="endBtn">End interview &amp; get debrief</button>
+    </div>
+  </div>
+</footer>
+
+<input type="file" id="fileInput" accept="image/*,.pdf" style="display:none">
+<div class="lightbox" id="lightbox"><img id="lightboxImg" alt="exhibit"></div>
+
+<script>
+"use strict";
+const stream = document.getElementById("stream");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+const hintBtn = document.getElementById("hintBtn");
+const endBtn = document.getElementById("endBtn");
+const uploadBtn = document.getElementById("uploadBtn");
+const fileInput = document.getElementById("fileInput");
+let busy = false, ended = false;
+
+// ---- timer ----
+const t0 = Date.now();
+setInterval(() => {
+  const s = Math.floor((Date.now() - t0) / 1000);
+  document.getElementById("timer").textContent =
+    String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}, 1000);
+
+// ---- tiny markdown (tables, headings, bold, lists, code, paragraphs) ----
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function inline(s) {
+  return esc(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+function renderMarkdown(md) {
+  const lines = (md || "").replace(/\r/g, "").split("\n");
+  let html = "", i = 0;
+  while (i < lines.length) {
+    let line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i]); i++; }
+      const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+      const head = cells(rows[0]);
+      let t = "<table><thead><tr>" + head.map(h => "<th>" + inline(h) + "</th>").join("") + "</tr></thead><tbody>";
+      for (let r = 2; r < rows.length; r++) {
+        t += "<tr>" + cells(rows[r]).map(c => "<td>" + inline(c) + "</td>").join("") + "</tr>";
+      }
+      html += t + "</tbody></table>";
+      continue;
+    }
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { const n = m[1].length; html += `<h${n}>${inline(m[2])}</h${n}>`; i++; continue; }
+    if (/^\s*[-*]\s+/.test(line)) {
+      html += "<ul>";
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { html += "<li>" + inline(lines[i].replace(/^\s*[-*]\s+/, "")) + "</li>"; i++; }
+      html += "</ul>"; continue;
+    }
+    if (/^\s*\d+\.\s+/.test(line)) {
+      html += "<ol>";
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { html += "<li>" + inline(lines[i].replace(/^\s*\d+\.\s+/, "")) + "</li>"; i++; }
+      html += "</ol>"; continue;
+    }
+    if (line.trim() === "") { i++; continue; }
+    let para = line; i++;
+    while (i < lines.length && lines[i].trim() !== "" && !/^\s*[-*|#]|\d+\./.test(lines[i])) { para += " " + lines[i]; i++; }
+    html += "<p>" + inline(para) + "</p>";
+  }
+  return html;
+}
+
+// ---- rendering turns ----
+function addTurn(role, text, cls) {
+  const wrap = document.createElement("div");
+  wrap.className = "turn " + role + (cls ? " " + cls : "");
+  const who = document.createElement("div");
+  who.className = "who";
+  who.textContent = role === "interviewer" ? "Interviewer" : "You";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  const col = document.createElement("div");
+  col.style.maxWidth = "100%";
+  col.appendChild(who); col.appendChild(bubble);
+  wrap.appendChild(col);
+  stream.appendChild(wrap);
+  scrollDown();
+  return bubble;
+}
+function addExhibit(ex) {
+  const card = document.createElement("div");
+  card.className = "exhibit";
+  let body = renderMarkdown(ex.markdown || "");
+  if (ex.hasImage) body += `<img src="/exhibit/${ex.n}" alt="Exhibit ${ex.n}" onclick="zoom(this.src)">`;
+  card.innerHTML = `<div class="ex-head"><span class="tag">EXHIBIT ${ex.n}</span> ${esc(ex.title || "")}</div>`
+    + `<div class="ex-body">${body}</div>`;
+  stream.appendChild(card);
+  scrollDown();
+}
+function addImageTurn(dataUrl) {
+  const wrap = document.createElement("div");
+  wrap.className = "turn candidate";
+  wrap.innerHTML = `<div style="max-width:100%"><div class="who" style="text-align:right">You</div>`
+    + `<div class="bubble"><img src="${dataUrl}" style="max-width:220px;border-radius:8px;display:block" alt="your upload"></div></div>`;
+  stream.appendChild(wrap); scrollDown();
+}
+function scrollDown() { window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); }
+function zoom(src) { document.getElementById("lightboxImg").src = src; document.getElementById("lightbox").classList.add("on"); }
+document.getElementById("lightbox").onclick = function () { this.classList.remove("on"); };
+
+// ---- network ----
+function setBusy(b) {
+  busy = b;
+  sendBtn.disabled = b; hintBtn.disabled = b; uploadBtn.disabled = b; endBtn.disabled = b || ended;
+}
+function typingBubble() {
+  const wrap = document.createElement("div");
+  wrap.className = "turn interviewer typing";
+  wrap.innerHTML = `<div><div class="who">Interviewer</div><div class="bubble">thinking...</div></div>`;
+  stream.appendChild(wrap); scrollDown();
+  return wrap;
+}
+async function post(path, payload) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!r.ok) { const e = await r.json().catch(() => ({ error: "request failed" })); throw new Error(e.error || "request failed"); }
+  return r.json();
+}
+function handleReply(data) {
+  addTurn("interviewer", data.reply || "(no reply)");
+  (data.exhibits || []).forEach(addExhibit);
+}
+
+async function send(hint) {
+  if (busy || ended) return;
+  const msg = input.value.trim();
+  if (!msg) return;
+  addTurn("candidate", msg, hint ? "hintline" : "");
+  input.value = ""; input.style.height = "auto";
+  setBusy(true);
+  const typing = typingBubble();
+  try {
+    const data = await post("/chat", { message: msg, hint: !!hint });
+    typing.remove(); handleReply(data);
+  } catch (e) { typing.remove(); addTurn("interviewer", "[error: " + e.message + "]"); }
+  finally { setBusy(false); input.focus(); }
+}
+
+async function uploadFile(file) {
+  if (busy || ended || !file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const dataUrl = reader.result;
+    if (file.type.startsWith("image/")) addImageTurn(dataUrl);
+    else addTurn("candidate", "[shared file: " + file.name + "]");
+    setBusy(true);
+    const typing = typingBubble();
+    try {
+      const data = await post("/upload", { name: file.name, mime: file.type, data: dataUrl, caption: input.value.trim() });
+      input.value = "";
+      typing.remove(); handleReply(data);
+    } catch (e) { typing.remove(); addTurn("interviewer", "[error: " + e.message + "]"); }
+    finally { setBusy(false); }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function endInterview() {
+  if (busy || ended) return;
+  ended = true; setBusy(true);
+  addTurn("candidate", "[Ending the interview. Requesting debrief.]");
+  const typing = typingBubble();
+  typing.querySelector(".bubble").textContent = "scoring your interview...";
+  try {
+    const sc = await post("/debrief", {});
+    typing.remove(); renderScorecard(sc);
+  } catch (e) { typing.remove(); addTurn("interviewer", "[debrief error: " + e.message + "]"); ended = false; setBusy(false); }
+}
+
+function tierClass(v) {
+  v = (v || "").toLowerCase();
+  if (v.startsWith("strong")) return "tier-strong";
+  if (v.startsWith("hire")) return "tier-hire";
+  if (v.includes("round 1")) return "tier-borderline";
+  return "tier-no";
+}
+function renderScorecard(sc) {
+  const card = document.createElement("div");
+  card.className = "scorecard";
+  let h = `<h2>Debrief</h2><div class="verdict-tier ${tierClass(sc.verdict)}">${esc(sc.verdict || "")}</div>`;
+  h += `<div class="client-test">${esc(sc.clientTest || "")}</div>`;
+  (sc.dimensions || []).forEach(d => {
+    const pct = Math.max(0, Math.min(100, (d.score || 0) * 10));
+    h += `<div class="dim"><div class="dim-head"><span class="name">${esc(d.name || "")}</span>`
+      + `<span class="weight">weight ${esc(String(d.weight || ""))}%</span>`
+      + `<span class="score">${esc(String(d.score ?? "-"))}<span style="font-size:12px;color:var(--muted)">/10</span></span></div>`
+      + `<div class="bar"><span style="width:${pct}%"></span></div><ul>`
+      + (d.evidence || []).map(e => `<li>${inline(e)}</li>`).join("") + `</ul></div>`;
+  });
+  const g = sc.gates || {};
+  if (Object.keys(g).length) {
+    h += `<div class="gates"><h3>Gate checks &amp; ledger</h3>`;
+    const labels = { misreadMath: "Misread-math", illogicalClaim: "Illogical-claim", wrongProblem: "Wrong-problem", hintLedger: "Hints", interventionCount: "Interventions" };
+    Object.keys(g).forEach(k => { h += `<div><b>${labels[k] || k}:</b> ${inline(String(g[k]))}</div>`; });
+    h += `</div>`;
+  }
+  if (sc.strongAnswer) h += `<div class="strong"><h3>What a strong answer would have looked like</h3><div class="md">${renderMarkdown(sc.strongAnswer)}</div></div>`;
+  if ((sc.drills || []).length) h += `<div class="drills"><h3>Drills for next time</h3><ol>${sc.drills.map(d => `<li>${inline(d)}</li>`).join("")}</ol></div>`;
+  if (sc.savedTo) h += `<div class="saved">Session saved to <code>${esc(sc.savedTo)}</code></div>`;
+  card.innerHTML = h;
+  stream.appendChild(card);
+  scrollDown();
+  setBusy(true); // stays disabled; interview is over
+}
+
+// ---- events ----
+sendBtn.onclick = () => send(false);
+hintBtn.onclick = () => {
+  if (!input.value.trim()) input.value = "Can I get a hint on how to approach this?";
+  send(true);
+};
+endBtn.onclick = endInterview;
+uploadBtn.onclick = () => fileInput.click();
+fileInput.onchange = e => { if (e.target.files[0]) uploadFile(e.target.files[0]); fileInput.value = ""; };
+input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(false); } });
+input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(160, input.scrollHeight) + "px"; });
+
+let dragDepth = 0;
+window.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("dragleave", e => { dragDepth--; if (dragDepth <= 0) document.body.classList.remove("dragging"); });
+window.addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  const f = e.dataTransfer.files[0]; if (f) uploadFile(f);
+});
+
+// ---- kick off: greet the interviewer so it delivers the prompt ----
+window.addEventListener("load", async () => {
+  input.focus();
+  setBusy(true);
+  const typing = typingBubble();
+  try {
+    const data = await post("/chat", { message: "I'm ready to begin. Please give me the case prompt." });
+    typing.remove(); handleReply(data);
+  } catch (e) { typing.remove(); addTurn("interviewer", "[could not start: " + e.message + "]"); }
+  finally { setBusy(false); }
+});
+</script>
+</body>
+</html>

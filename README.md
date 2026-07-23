@@ -14,25 +14,25 @@ npx skills update frontier-go-wild
 ```
 
 `npx skills` (the [skills.sh](https://skills.sh) standard) installs the skill
-folder under `~/.agents/skills/` and symlinks it into `~/.claude/skills/`.
-That is a complete install for pure-prompt skills. Skills that drive a browser or need credentials ship a companion
-`setup-*` skill you run once after install (see below).
+folder under `~/.agents/skills/` and symlinks it into `~/.claude/skills/`. That
+is a complete install for pure-prompt skills. A skill that needs setup beyond
+copying its folder ships a `setup.sh` inside its own folder that you run once
+after install (see that skill's README).
 
 ## Skills
 
-### Tools
-
 | Skill | What it does | Setup |
 |-------|--------------|-------|
-| [`frontier-go-wild`](./skills/frontier-go-wild/README.md) | Find Frontier Go Wild seat availability day-by-day for an origin and many destinations, ranked by fee. | Run `bash setup.sh` in the skill folder once on a new machine (browser toolkit only — no login or credentials). |
+| [`case-interviewer`](./skills/case-interviewer/README.md) | Run a live consulting case interview in your browser, you as the candidate and Claude as the interviewer: it builds or ingests a case, reveals exhibits on cue, and scores a debrief against a real rubric. | None. Self-contained (Python stdlib + the `claude` CLI). |
+| [`frontier-go-wild`](./skills/frontier-go-wild/README.md) | Find Frontier Go Wild seat availability day-by-day for an origin and many destinations, ranked by fee. | Run `bash setup.sh` in the skill folder once on a new machine (browser toolkit only, no login or credentials). |
 
 ## Layout
 
 ```
-skills/<bucket>/<skill-name>/SKILL.md   the skills (skills.sh reads these)
-.claude-plugin/plugin.json              the ship manifest (which skills are public)
-docs/<bucket>/<skill-name>.md           per-skill quickstart pages
-scripts/link-skills.sh                  dev: symlink skills into ~/.claude/skills
+skills/<skill-name>/SKILL.md    the skills (skills.sh reads these)
+.claude-plugin/plugin.json      the ship manifest (which skills are public)
+docs/<skill-name>.md            per-skill quickstart pages
+scripts/link-skills.sh          dev: symlink skills into ~/.claude/skills
 ```
 
 ## Local development

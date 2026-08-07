@@ -63,7 +63,12 @@ day grids.
 - `layoverMin` / `layoverMax` (minutes) - a connection must fall in this window
 - `maxTripHours` - first departure → final arrival must fit under this
 - `preferredCities` - ordered list of IATA hubs; routes through earlier-listed
-  cities rank higher (soft preference, never a hard filter)
+  cities rank higher (soft preference, never a hard filter). This only re-orders
+  itineraries already found - it never causes a search.
+- `stitchCities` (optional) - IATA hubs to force as self-transfer middle cities,
+  searched IN ADDITION to the ones derived automatically. Only meaningful in
+  self-transfer mode; ignored otherwise. Unlike `preferredCities` this DOES add
+  searches. See [`reference/self-transfer.md`](reference/self-transfer.md).
 - `cap` (optional) - bound for this run, either `{ "searches": N }` or
   `{ "minutes": N }`. **Default: no cap** - the run takes whatever
   destinations × days requires. A cap NEVER pre-trims the plan: run

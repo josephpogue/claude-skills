@@ -6,8 +6,19 @@ only when the user asks for self-transfer / two-leg / separate-booking options
 "never synthesize connections" — the user's own filters bound the explosion:
 
 1. **Middle cities** = (origin's served markets) ∩ (markets serving the
-   destination), both from the public `flights-from-<city>` pages. `maxStops 1`
-   = one middle city per route. Drop middles equal to origin/destination.
+   destination), both from the public `flights-from-<city>` pages, **UNION any
+   `stitchCities` the user named**. `maxStops 1` = one middle city per route.
+   Drop middles equal to origin/destination.
+   - A `stitchCities` entry is searched **even when it is not in the
+     intersection**. That is the whole point of naming it: the user may know a
+     route the cached network file does not, or want it confirmed dead rather
+     than assumed. Never silently drop one.
+   - If a named city turns out to have no Frontier service on either leg, report
+     it as `unserved` on that leg and move on — same honesty contract as an
+     unserved destination. Say which leg failed, so "DEN doesn't work" is
+     distinguishable from "BOS→DEN works but DEN→LAX doesn't".
+   - Named cities are searched FIRST, before the derived ones, so a capped run
+     spends its budget on what the user asked for.
 2. **Search each leg standalone** — `origin → middle` and `middle → destination`
    are ordinary one-date searches (same worker contract). A leg seen inside a
    through-itinerary does NOT prove standalone Go Wild availability; always

@@ -124,5 +124,5 @@ If the agent hits an unbeatable CAPTCHA or anti-bot challenge:
 ## Signals
 
 `signals.py` emits structured outcome signals after each run (login success, selector
-fallbacks used, human handoff required). These feed the Agent Evolution system so
+fallbacks used, human handoff required). These are kept on disk so
 weak spots get targeted for improvement.

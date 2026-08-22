@@ -1,4 +1,4 @@
-"""Append-only run signals consumed by Agent Evolution to target proposals."""
+"""Append-only per-run signal records, kept on disk for later analysis."""
 from __future__ import annotations
 import json
 from pathlib import Path

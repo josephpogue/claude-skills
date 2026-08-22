@@ -50,7 +50,7 @@ what you learned so deterministic scrapers can run the steady state without you.
 6. **Update the recipe** with anything new (working selectors, signal locations,
    gotchas) and bump `last_verified`. This is how you get better — never skip it.
 7. **Emit signals** (login solved first try? selector fallbacks? human handoff?)
-   so Agent Evolution can target real weaknesses.
+   so a later review can find real weaknesses.
 
 ## Output
 

@@ -8,10 +8,69 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
+# 'shared.browser' lives in one of two places depending on which checkout this
+# file runs from: the published frontier-go-wild skill vendors its own shared/
+# next to this file, while inside My-Life it comes from the sibling
+# flight-search automation. Try both, so this file stays byte-identical in both
+# trees and sync-vendored.py can mirror it verbatim. (conftest.py only covers
+# the pytest process, so the subprocess needs this too.)
+_HERE = Path(__file__).resolve().parent
+for _root in (_HERE, _HERE.parent / "flight-search"):
+    if (_root / "shared" / "browser.py").exists() and str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
+
+import heal
 from session import BrowserSession
 
-_DISPATCH = {"open", "snapshot", "click", "type", "keyboard_type", "press", "wait", "screenshot", "save_state", "evaluate", "select", "select_native", "cache_route", "focus_nth", "type_focused"}
+_DISPATCH = {"open", "snapshot", "click", "type", "keyboard_type", "press", "wait", "screenshot", "save_state", "evaluate", "select", "select_native", "cache_route", "focus_nth", "type_focused", "tree", "act"}
+
+
+# Commands that drive a control, so a failure may be a moved button rather than
+# a real dead end. Give one of these an `intent` and it repairs itself instead
+# of raising; without an intent nothing changes.
+_INTERACTIVE = {"click", "type", "keyboard_type", "press", "wait", "select", "select_native"}
+
+# What the healer should do once it has found the control the command meant.
+_HEAL_METHOD = {"click": "click", "type": "fill", "keyboard_type": "type",
+                "press": "press", "wait": "wait", "select": "select",
+                "select_native": "select"}
+
+
+async def _run_command(session, cmd: str, cargs: dict, profile: str, ask=None):
+    """Run one command, and repair the step in place if a selector has moved.
+
+    `intent` is what makes this different from a plain call: it is the step said
+    in words ("the box where the email address is typed"), which is what the
+    healer needs to recognise the control after the page changed. The dead
+    selector alone tells it nothing. `key` alone is enough when the recipe
+    already carries those words under `intents`."""
+    cargs = dict(cargs)
+    intent = cargs.pop("intent", None)
+    key = cargs.pop("key", None)
+    site = cargs.pop("site", None) or profile
+    call = getattr(session, cmd)
+    if cmd not in _INTERACTIVE or not (intent or key):
+        return await call(**cargs)
+    try:
+        return await call(**cargs)
+    except Exception as e:
+        outcome = await heal.heal_step(
+            session, site=site, key=key or cargs.get("selector") or cmd,
+            intent=intent or "", error=f"{type(e).__name__}: {e}",
+            method=_HEAL_METHOD.get(cmd, "click"), value=cargs.get("value"),
+            ask=ask,
+            run_id=os.environ.get("BROWSER_PILOT_RUN_ID"),
+            signals_dir=os.environ.get("BROWSER_PILOT_SIGNALS_DIR"),
+            screenshot_dir=os.environ.get("BROWSER_PILOT_SCREENSHOT_DIR"),
+        )
+        if outcome.get("healed"):
+            return outcome
+        raise RuntimeError(
+            f"{cmd} failed and could not be repaired: {outcome.get('reason')} "
+            f"(original error: {type(e).__name__}: {e})"
+        )
 
 
 def _sock_path(profile: str) -> str:
@@ -41,7 +100,7 @@ async def _serve(profile: str, headless: bool, state_file: str | None) -> None:
                 resp = {"ok": True, "result": "stopping"}
                 stop_event.set()
             elif cmd in _DISPATCH:
-                result = await getattr(session, cmd)(**cargs)
+                result = await _run_command(session, cmd, cargs, profile)
                 resp = {"ok": True, "result": result}
             else:
                 resp = {"ok": False, "error": f"unknown cmd: {cmd}"}
@@ -117,6 +176,15 @@ def main() -> int:
     p.add_argument("--expression"); p.add_argument("--delay-ms", type=int, dest="delay_ms")
     p.add_argument("--pattern")
     p.add_argument("--tag"); p.add_argument("--n", type=int)
+    # tree()/act(): the healer drives controls by the id tree() printed,
+    # not by a selector it had to guess.
+    p.add_argument("--id", dest="element_id"); p.add_argument("--method")
+    # An interaction that carries an intent repairs itself when the control
+    # has moved, instead of ending the run.
+    p.add_argument("--intent", help="what this step is trying to do, in words")
+    p.add_argument("--selector-key", dest="selector_key",
+                   help="the recipe selector name to repair")
+    p.add_argument("--site", help="recipe to repair (default: the profile name)")
     p.add_argument("--foreground", action="store_true",
                    help="run the daemon in the foreground (blocks); default is detached")
     a = p.parse_args()
@@ -130,7 +198,9 @@ def main() -> int:
             {"url": a.url, "selector": a.selector, "value": a.value,
              "key": a.key, "path": a.path, "expression": a.expression,
              "delay_ms": a.delay_ms, "tag": a.tag, "n": a.n,
-             "pattern": a.pattern}.items() if v is not None}
+             "pattern": a.pattern, "element_id": a.element_id,
+             "method": a.method, "intent": a.intent, "key": a.selector_key,
+             "site": a.site}.items() if v is not None}
     return asyncio.run(_client(a.cmd, a.profile, args))
 
 

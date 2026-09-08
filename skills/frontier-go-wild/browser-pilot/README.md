@@ -42,12 +42,32 @@ Run in the background (`&`) before issuing any other commands.
 |---|---|
 | `open --profile <site> --url <URL>` | Navigate to a URL |
 | `snapshot --profile <site>` | Returns JSON: title, visible text, interactive controls |
+| `tree --profile <site>` | Returns every **visible** control, one section per frame, each with an id and a selector |
+| `act --profile <site> --id <0-12> --method <click\|fill\|press\|select\|wait> [--value <text>]` | Drive a control by the id `tree` printed |
 | `click --profile <site> --selector <sel>` | Click an element |
 | `type --profile <site> --selector <sel> --value <text>` | Type into a field |
 | `press --profile <site> --selector <sel> --key <key>` | Press a keyboard key (e.g. `Enter`) on an element |
 | `wait --profile <site> --selector <sel>` | Wait for an element to appear |
 | `screenshot --profile <site> --path <png>` | Save a screenshot; use `Read` to view it |
 | `stop --profile <site>` | Shut down the daemon for this profile |
+
+Use `snapshot` to read page content and `tree` whenever something has to be
+clicked or typed. `tree` lists only what is actually visible, so a hidden
+duplicate of a button cannot be picked by mistake, and it reaches inside
+iframes, which `snapshot` cannot see at all.
+
+```
+=== Frame 0 (Main) ===
+  [0-0] textbox: Email address
+  [0-1] password: Password
+  [0-2] button: Log in to your account
+=== Frame 1 (Verification) ===
+  [1-0] textbox: One-time code
+  [1-1] button: Verify
+```
+
+`click`, `type`, `keyboard_type`, `press`, `wait`, `select` and `select_native`
+also take `--intent`, `--selector-key` and `--site`; see **Self-healing**.
 
 ### Example session
 
@@ -118,6 +138,43 @@ If the agent hits an unbeatable CAPTCHA or anti-bot challenge:
 1. It restarts the daemon with `--headed` so the browser window is visible.
 2. It asks the user to complete the challenge once.
 3. It resumes from there and records `needs_human: true` in the recipe.
+
+---
+
+## Self-healing
+
+When a site moves a button, the run repairs itself instead of ending.
+
+```bash
+uv run python control.py type --profile frontier \
+  --selector '#email-input' --value "$EMAIL" \
+  --intent 'the box where the email address is typed' \
+  --selector-key email_box --site frontier
+```
+
+If the selector still works, nothing changes. If it does not, the page is read
+with `tree`, the failure is classified, the control that now does what the step
+meant is identified, that control has to be visible on the live page before it
+is used, the step runs, and the new selector is written into
+`recipes/<site>.json` with a dated note in `gotchas`.
+
+**Never repaired:** a CAPTCHA or bot challenge, a locked or suspended account, a
+rejected password. Those stop and ask for a person. A site that is down or rate
+limiting is retried, not rewritten. Anything the classifier does not recognise
+goes to a person too.
+
+A recipe can say what its steps mean, which lets a scraper that only passes a
+selector repair itself with no change to its code:
+
+```jsonc
+{
+  "selectors": { "email_box": "#email-input" },
+  "intents":   { "email_box": "the box where the email address is typed" }
+}
+```
+
+Set `BROWSER_PILOT_RUN_ID` (and optionally `BROWSER_PILOT_SIGNALS_DIR` and
+`BROWSER_PILOT_SCREENSHOT_DIR`) so heals are attributed to the run.
 
 ---
 

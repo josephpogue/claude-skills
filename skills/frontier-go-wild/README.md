@@ -124,7 +124,7 @@ If you're an agent asked to install and set this up end to end:
 |------|-----------|
 | `SKILL.md` | The operating manual the agent follows to run a search, including the `## Setup` section. |
 | `setup.sh` | The one-time installer (toolkit + Chromium + smoke test; no credentials). |
-| `browser-pilot/` | The vendored browser-automation toolkit (`control.py`, Frontier recipe, deps). |
+| `browser-pilot/` | The vendored browser-automation toolkit (`control.py`, self-healing, Frontier recipe, deps). |
 | `agent/browser-pilot.md` | The `browser-pilot` subagent definition the installer drops into `~/.claude/agents/`. |
 | `bin/runlog` | Vendored run-logging helper installed to `~/.local/bin/`. |
 | `frontier-network.json` | Airport metadata (state/region/tags) + semantic group lists used to resolve destinations. |

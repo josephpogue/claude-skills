@@ -6,6 +6,7 @@ shared.browser's context managers) so the daemon can keep one page alive
 across many client calls."""
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,130 @@ from patchright.async_api import async_playwright
 from shared.browser import UA, VIEWPORT, LOCALE, TIMEZONE, PROFILES_DIR
 
 _CONTROL_SELECTOR = "a, button, input, select, textarea, [role=button]"
+
+# How much page text a snapshot returns. The old 4000 was small enough to cut
+# real content off the end of a long results grid -- and because the cut was
+# silent, a caller could not tell a short page from a truncated one. Frontier's
+# Go Wild grid alone runs past 4000 on a busy route. Raise the default and set
+# `truncated` when the cut actually happens; override per-machine with
+# BROWSER_PILOT_MAX_TEXT.
+_MAX_TEXT = int(os.environ.get("BROWSER_PILOT_MAX_TEXT") or 20000)
+
+# What tree() considers a control. Wider than _CONTROL_SELECTOR because the
+# healer has to find things a scraper never touched: ARIA widgets and rich-text
+# boxes that carry no <input> at all.
+_TREE_SELECTOR = (
+    "a, button, input:not([type=hidden]), select, textarea, summary, "
+    "[role=button], [role=link], [role=checkbox], [role=radio], [role=tab], "
+    "[role=textbox], [role=combobox], [role=menuitem], [contenteditable=true]"
+)
+
+# A cap so a huge page cannot blow up a daemon reply. Unlike snapshot()'s old
+# silent slice, hitting it sets `truncated`.
+_MAX_ELEMENTS = int(os.environ.get("BROWSER_PILOT_MAX_ELEMENTS") or 300)
+
+# Runs once per frame. Kept as in-page JavaScript rather than CDP so it works
+# under Patchright and inside every frame Playwright can reach.
+_COLLECT_JS = r"""([sel, max]) => {
+  const esc = (s) => (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const st = getComputedStyle(el);
+    if (st.visibility === 'hidden' || st.display === 'none') return false;
+    if (parseFloat(st.opacity || '1') === 0) return false;
+    if (el.closest('[aria-hidden="true"]')) return false;
+    return true;
+  };
+
+  const clean = (t) => (t || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+
+  const nameOf = (el) => {
+    const aria = clean(el.getAttribute('aria-label'));
+    if (aria) return aria;
+    const lb = el.getAttribute('aria-labelledby');
+    if (lb) {
+      const n = clean(lb.split(/\s+/).map(i => {
+        const t = document.getElementById(i); return t ? t.innerText : '';
+      }).join(' '));
+      if (n) return n;
+    }
+    if (el.id) {
+      const l = document.querySelector('label[for="' + esc(el.id) + '"]');
+      if (l) { const n = clean(l.innerText); if (n) return n; }
+    }
+    const wrap = el.closest('label');
+    if (wrap) { const n = clean(wrap.innerText); if (n) return n; }
+    const ph = clean(el.getAttribute('placeholder'));
+    if (ph) return ph;
+    const txt = clean(el.innerText);
+    if (txt) return txt;
+    const title = clean(el.getAttribute('title'));
+    if (title) return title;
+    const alt = clean(el.getAttribute('alt'));
+    if (alt) return alt;
+    return clean(el.getAttribute('name'));
+  };
+
+  const roleOf = (el) => {
+    const explicit = el.getAttribute('role');
+    if (explicit) return explicit;
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'a') return el.hasAttribute('href') ? 'link' : 'generic';
+    if (tag === 'button') return 'button';
+    if (tag === 'select') return 'combobox';
+    if (tag === 'textarea') return 'textbox';
+    if (tag === 'summary') return 'disclosure';
+    if (tag === 'input') {
+      const t = (el.getAttribute('type') || 'text').toLowerCase();
+      if (t === 'checkbox') return 'checkbox';
+      if (t === 'radio') return 'radio';
+      if (t === 'submit' || t === 'button' || t === 'reset') return 'button';
+      if (t === 'password') return 'password';
+      return 'textbox';
+    }
+    return 'generic';
+  };
+
+  // A selector durable enough to store in a recipe: an id when it is unique,
+  // otherwise a structural path.
+  const selectorFor = (el) => {
+    if (el.id && document.querySelectorAll('#' + esc(el.id)).length === 1) {
+      return '#' + esc(el.id);
+    }
+    const parts = [];
+    let cur = el;
+    while (cur && cur.nodeType === 1 && cur.tagName.toLowerCase() !== 'html') {
+      let part = cur.tagName.toLowerCase();
+      const parent = cur.parentElement;
+      if (parent) {
+        const sibs = [...parent.children].filter(c => c.tagName === cur.tagName);
+        if (sibs.length > 1) part += ':nth-of-type(' + (sibs.indexOf(cur) + 1) + ')';
+      }
+      parts.unshift(part);
+      cur = parent;
+    }
+    return parts.join(' > ');
+  };
+
+  const out = [];
+  for (const el of document.querySelectorAll(sel)) {
+    if (out.length >= max) break;
+    if (!visible(el)) continue;
+    const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    out.push({
+      n: out.length,
+      role: roleOf(el),
+      name: nameOf(el),
+      value: (isInput && type !== 'password') ? clean(el.value) : '',
+      selector: selectorFor(el),
+      tag: el.tagName.toLowerCase(),
+    });
+  }
+  return out;
+}"""
 
 
 class BrowserSession:
@@ -27,6 +152,8 @@ class BrowserSession:
         self._pw = None
         self.ctx = None
         self.page = None
+        # id -> element record, refreshed by tree() and read by act().
+        self._tree_index: dict[str, dict] = {}
 
     async def start(self) -> None:
         self._pw = await async_playwright().start()
@@ -100,7 +227,9 @@ class BrowserSession:
 
     async def snapshot(self) -> dict[str, Any]:
         title = await self.page.title()
-        text = (await self.page.inner_text("body"))[:4000]
+        full_text = await self.page.inner_text("body")
+        text = full_text[:_MAX_TEXT]
+        truncated = len(full_text) > _MAX_TEXT
         controls = await self.page.eval_on_selector_all(
             _CONTROL_SELECTOR,
             """els => els.slice(0, 100).map(e => ({
@@ -113,7 +242,14 @@ class BrowserSession:
                 href: e.getAttribute('href') || ''
             }))""",
         )
-        return {"url": self.page.url, "title": title, "text": text, "controls": controls}
+        return {
+            "url": self.page.url,
+            "title": title,
+            "text": text,
+            "truncated": truncated,
+            "textLength": len(full_text),
+            "controls": controls,
+        }
 
     async def click(self, selector: str, timeout_ms: int = 5000) -> None:
         await self.page.click(selector, timeout=timeout_ms)
@@ -206,3 +342,101 @@ class BrowserSession:
     async def evaluate(self, expression: str) -> Any:
         """Run arbitrary JavaScript on the page and return the result."""
         return await self.page.evaluate(expression)
+
+    # ---- accessibility tree -------------------------------------------------
+    # snapshot() above returns page text plus the first 100 controls named by tag
+    # and id. It cannot see inside an iframe, and it cannot tell a visible control
+    # from a hidden twin, which is the exact shape of the breaks that keep needing
+    # a human. tree() is what the healer reads instead: every *visible* control in
+    # every frame, named the way a person would read it, each with a stable id to
+    # act on and a selector durable enough to write back into a recipe.
+
+    async def tree(self) -> dict[str, Any]:
+        """Every visible control on the page, one section per frame."""
+        elements: list[dict[str, Any]] = []
+        index: dict[str, dict[str, Any]] = {}
+        lines: list[str] = []
+        truncated = False
+
+        for fi, frame in enumerate(self.page.frames):
+            try:
+                found = await frame.evaluate(_COLLECT_JS, [_TREE_SELECTOR, _MAX_ELEMENTS])
+            except Exception:
+                # A cross-origin or torn-down frame simply contributes nothing.
+                continue
+            if not found:
+                continue
+            truncated = truncated or len(found) >= _MAX_ELEMENTS
+            lines.append(f"=== Frame {fi} ({await self._frame_label(fi, frame)}) ===")
+            for e in found:
+                eid = f"{fi}-{e['n']}"
+                rec = {
+                    "id": eid,
+                    "role": e["role"],
+                    "name": e["name"],
+                    "value": e["value"],
+                    "frame": fi,
+                    "selector": e["selector"],
+                    "tag": e["tag"],
+                }
+                elements.append(rec)
+                index[eid] = rec
+                val = f" = {e['value']}" if e["value"] else ""
+                lines.append(f"  [{eid}] {e['role']}: {e['name']}{val}")
+
+        self._tree_index = index
+        return {
+            "url": self.page.url,
+            "title": await self.page.title(),
+            "tree": "\n".join(lines),
+            "elements": elements,
+            "count": len(elements),
+            "truncated": truncated,
+        }
+
+    async def _frame_label(self, fi: int, frame) -> str:
+        if fi == 0:
+            return "Main"
+        try:
+            fe = await frame.frame_element()
+            for attr in ("title", "name", "id"):
+                v = await fe.get_attribute(attr)
+                if v:
+                    return v
+        except Exception:
+            pass
+        return (frame.url or "iframe")[:60]
+
+    async def act(self, element_id: str, method: str = "click",
+                  value: str | None = None, timeout_ms: int = 5000) -> str:
+        """Drive a control by the id tree() gave it.
+
+        Unknown ids raise instead of guessing: a healer that silently acts on the
+        wrong control is worse than one that stops and says the page moved."""
+        entry = self._tree_index[element_id]
+        frame = self.page.frames[entry["frame"]]
+        loc = frame.locator(entry["selector"]).first
+        m = method.lower()
+        if m == "click":
+            await loc.click(timeout=timeout_ms)
+        elif m == "fill":
+            await loc.fill(value or "", timeout=timeout_ms)
+        elif m == "type":
+            await loc.click(timeout=timeout_ms)
+            await frame.page.keyboard.type(value or "", delay=50)
+        elif m == "press":
+            await loc.press(value or "Enter", timeout=timeout_ms)
+        elif m == "select":
+            await loc.select_option(value, timeout=timeout_ms)
+        elif m == "check":
+            await loc.check(timeout=timeout_ms)
+        elif m == "uncheck":
+            await loc.uncheck(timeout=timeout_ms)
+        elif m == "hover":
+            await loc.hover(timeout=timeout_ms)
+        elif m == "wait":
+            # Nothing is driven: the caller only needed the control to be there.
+            await loc.wait_for(state="visible", timeout=timeout_ms)
+        else:
+            raise ValueError(f"unknown act method: {method}")
+        return f"{m} {element_id} ({entry['name'] or entry['selector']})"

@@ -127,8 +127,8 @@ def _serve_detached(profile: str, headless: bool, state_file: str | None) -> int
 
     `serve` is a long-running daemon that never exits on its own, so running it
     in the foreground blocks (and hangs) the caller. Detaching makes the invoking
-    command return as soon as the socket is up, regardless of how it was launched
-    — this is the default so an agent can't accidentally hang a run on it."""
+    command return as soon as the socket is up, regardless of how it was launched,
+    and this is the default so an agent can't accidentally hang a run on it."""
     sock = _sock_path(profile)
     if os.path.exists(sock):
         os.unlink(sock)

@@ -12,29 +12,28 @@ npx skills update frontier-go-wild
 
 ## What it does
 
-`frontier-go-wild` finds Frontier **Go Wild** seat availability day-by-day for
-one origin and one or many destinations (specific cities, states, or semantic
-groups like "northeast" or "beach") across a date range, ranked cheapest-first
-with your preferred transfer cities on top. It drives a real headless browser
-into frontier.com, so it reports only real availability and never invents fares.
+`frontier-go-wild` checks Frontier **Go Wild** pass seats for an exact list of
+one-way searches. Each search is an origin, a destination and a date; one set
+of optional filters (max stops, max layover, latest arrival date) applies to
+all of them. It reads each day on flyfrontier.com with the Go Wild pass
+switched on, in the order given, and returns only the flights that pass, with
+the Go Wild fee for each seat. It drives a real headless browser, so it never
+invents fares.
 
 ## Before you run it
 
-This is not a pure-prompt skill. It needs a browser toolkit, bundled in the
-skill folder. On a new machine, run the included installer once:
+This is not a pure-prompt skill. On a new machine, run the included setup once:
 
 ```bash
 bash ~/.claude/skills/frontier-go-wild/setup.sh
 ```
 
-It installs the browser toolkit (and Chromium) and runs a smoke test. There's
-**no login and no credentials** - Go Wild availability reads off frontier.com's
-public booking page logged out. See the **Setup** section of the skill for
-details.
+It installs `uv`, the Python dependency and Chromium, then checks the skill
+loads and the browser opens a page. There is **no login and no credentials**.
 
 ## Run it
 
-> frontier go wild ATL to the northeast next week
+> check Go Wild MCO to PHL on March 14, nonstop only
 
-It returns a per-destination, per-day scoreboard and also writes a
-self-contained HTML report you can open without any server.
+The agent builds the list of reads, runs the skill and gets back one JSON
+document: a status per read and the flights that passed, in 29 fixed columns.

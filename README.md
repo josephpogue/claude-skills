@@ -24,7 +24,7 @@ after install (see that skill's README).
 | Skill | What it does | Setup |
 |-------|--------------|-------|
 | [`case-interviewer`](./skills/case-interviewer/README.md) | Run a live consulting case interview in your browser, you as the candidate and Claude as the interviewer: it builds or ingests a case, reveals exhibits on cue, and scores a debrief against a real rubric. | None. Self-contained (Python stdlib + the `claude` CLI). |
-| [`frontier-go-wild`](./skills/frontier-go-wild/README.md) | Find Frontier Go Wild seat availability day-by-day for an origin and many destinations, ranked by fee. | Run `bash setup.sh` in the skill folder once on a new machine (browser toolkit only, no login or credentials). |
+| [`frontier-go-wild`](./skills/frontier-go-wild/README.md) | Check Frontier Go Wild pass seats for an exact list of one-way searches (origin, destination, date), returning only the flights that pass your stops, layover and arrival filters, with the Go Wild fee. | Run `bash setup.sh` in the skill folder once on a new machine (uv, Python deps, Chromium; no login or credentials). |
 
 ## Layout
 

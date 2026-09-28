@@ -2,7 +2,7 @@
 
 The deterministic engines and the browser-pilot agent both drive a page
 through this class. It owns its own playwright/context lifecycle (unlike
-shared.browser's context managers) so the daemon can keep one page alive
+shared/browser.py's context managers) so the daemon can keep one page alive
 across many client calls."""
 from __future__ import annotations
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from patchright.async_api import async_playwright
-from shared.browser import UA, VIEWPORT, LOCALE, TIMEZONE, PROFILES_DIR
+from shared.profiles import UA, VIEWPORT, LOCALE, TIMEZONE, PROFILES_DIR, profile_dir
 
 _CONTROL_SELECTOR = "a, button, input, select, textarea, [role=button]"
 
@@ -157,10 +157,10 @@ class BrowserSession:
 
     async def start(self) -> None:
         self._pw = await async_playwright().start()
-        profile_dir = PROFILES_DIR / self.profile
-        profile_dir.mkdir(parents=True, exist_ok=True)
+        user_data = profile_dir(self.profile)
+        user_data.mkdir(parents=True, exist_ok=True)
         self.ctx = await self._pw.chromium.launch_persistent_context(
-            user_data_dir=str(profile_dir), headless=self.headless,
+            user_data_dir=str(user_data), headless=self.headless,
             user_agent=UA, viewport=VIEWPORT, locale=LOCALE, timezone_id=TIMEZONE,
         )
         self.page = self.ctx.pages[0] if self.ctx.pages else await self.ctx.new_page()
@@ -338,6 +338,29 @@ class BrowserSession:
             return f"selected: {value} at nth={n}"
         except Exception as e:
             return f"error: {type(e).__name__}: {e}"
+
+    async def pages(self) -> list[dict]:
+        """Every tab this context holds, with the active one marked.
+
+        A site that hands off to an affiliated portal (Schwab -> Retirement Plan
+        Services) opens a NEW tab, and the daemon keeps driving the old one. The
+        page looks unchanged and the handoff looks broken; it is not, it is in a
+        tab nothing was pointing at.
+        """
+        out = []
+        for i, pg in enumerate(self.ctx.pages):
+            out.append({"index": i, "url": pg.url, "title": await pg.title(),
+                        "active": pg is self.page})
+        return out
+
+    async def use_page(self, n: int) -> str:
+        """Drive the nth tab from now on (see pages())."""
+        pgs = self.ctx.pages
+        if n >= len(pgs):
+            return f"index out of range: {len(pgs)} page(s)"
+        self.page = pgs[n]
+        await self.page.bring_to_front()
+        return self.page.url
 
     async def evaluate(self, expression: str) -> Any:
         """Run arbitrary JavaScript on the page and return the result."""

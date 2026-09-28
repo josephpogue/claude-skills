@@ -1,75 +1,49 @@
 #!/usr/bin/env bash
-# Onboard the frontier-go-wild skill: install its vendored browser toolkit +
-# agent. No credentials needed — Go Wild availability reads off the public
-# booking page logged out. Idempotent — re-running skips anything already in
-# place. This file ships beside SKILL.md, so $HERE is the installed skill folder
-# itself. Run: bash setup.sh
+# One-time setup for the frontier-go-wild skill. Idempotent: re-running it
+# skips anything already in place. No login and no credentials: Go Wild
+# availability reads off Frontier's public booking page.
+#   bash setup.sh
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)   # the installed skill folder
+cd "$HERE"
 
-# ── install roots ────────────────────────────────────────────────────────────
-# If a live My-Life browser-pilot is already present, reuse it (keeps its warm
-# session); otherwise install the vendored toolkit under ~/.claude/tools.
-if [ -d "$HOME/Documents/GitHub/My-Life/automations/browser-pilot" ]; then
-  PILOT="$HOME/Documents/GitHub/My-Life/automations/browser-pilot"
-else
-  PILOT="$HOME/.claude/tools/browser-pilot"
-fi
-
-# runlog: the skill's run-logging heartbeat helper. Vendored; only installed
-# when the machine doesn't already have one (keeps a live My-Life symlink).
-if [ ! -e "$HOME/.local/bin/runlog" ]; then
-  echo "→ runlog → ~/.local/bin/runlog"
-  mkdir -p "$HOME/.local/bin"
-  cp "$HERE/bin/runlog" "$HOME/.local/bin/runlog"
-  chmod +x "$HOME/.local/bin/runlog"
-else
-  echo "✓ runlog already present"
-fi
-
-echo "→ agent  → ~/.claude/agents/browser-pilot.md"
-mkdir -p "$HOME/.claude/agents"
-cp "$HERE/agent/browser-pilot.md" "$HOME/.claude/agents/browser-pilot.md"
-
-echo "→ pilot  → $PILOT"
-mkdir -p "$PILOT"
-rsync -a --ignore-existing "$HERE/browser-pilot/" "$PILOT/"   # never clobber a live install
-mkdir -p "$PILOT/state" "$PILOT/signals"
-
-# Record where the toolkit lives so SKILL.md can resolve it on any machine.
-mkdir -p "$HOME/.claude/data/frontier-go-wild"
-echo "$PILOT" > "$HOME/.claude/data/frontier-go-wild/pilot-root"
-
-# ── python runtime ───────────────────────────────────────────────────────────
 if ! command -v uv >/dev/null 2>&1; then
-  echo "→ installing uv (python package runner)…"
+  echo "-> installing uv (Python package runner)"
   curl -LsSf https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
 fi
-echo "→ python deps + chromium (first time takes a few minutes)…"
-( cd "$PILOT" && uv sync --quiet && uv run patchright install chromium )
 
-# No credentials needed: Go Wild availability reads off the public booking page
-# for logged-out visitors (verified 2026-07-09), so there is no Frontier login
-# and no Gmail OTP reader to collect.
+echo "-> Python dependencies"
+uv sync --quiet
 
-# ── smoke test ───────────────────────────────────────────────────────────────
+echo "-> Chromium for the browser (the first time takes a few minutes)"
+if [ "$(uname -s)" = "Linux" ]; then
+  uv run patchright install --with-deps chromium
+else
+  uv run patchright install chromium
+fi
+
+echo "-> check: the skill loads (a business-class read opens no browser)"
+OUT=$(echo '{"reads":[{"origin":"ATL","destination":"DEN","date":"2030-01-15"}],"filters":{"cabin":"business"}}' \
+  | uv run python search.py 2>/dev/null)
+case "$OUT" in
+  *'"not_applicable"'*) echo "   ok" ;;
+  *) echo "   the skill did not load; output was:"; echo "$OUT"; exit 1 ;;
+esac
+
+echo "-> check: the headless browser opens a page"
+PROFILE=setup-check
+DATA="$HOME/.claude/data/frontier-go-wild/browser-profiles/$PROFILE"
+uv run python browser-pilot/control.py serve --profile "$PROFILE" >/dev/null
+uv run python browser-pilot/control.py open --profile "$PROFILE" --url https://example.com >/dev/null
+SNAP=$(uv run python browser-pilot/control.py snapshot --profile "$PROFILE" 2>/dev/null | head -c 400 || true)
+uv run python browser-pilot/control.py stop --profile "$PROFILE" >/dev/null 2>&1 || true
+rm -rf "$DATA"
+case "$SNAP" in
+  *Example*) echo "   ok" ;;
+  *) echo "   the browser did not return the page; re-run setup.sh (usually the Chromium install)"; exit 1 ;;
+esac
+
 echo
-echo "→ smoke test: headless browser round-trip…"
-(
-  cd "$PILOT"
-  nohup uv run python control.py serve --profile setup-smoke --headless >/dev/null 2>&1 &
-  sleep 6
-  uv run python control.py open --profile setup-smoke --url https://example.com >/dev/null
-  SNAP=$(uv run python control.py snapshot --profile setup-smoke 2>/dev/null | head -c 300)
-  case "$SNAP" in
-    *Example*) echo "  ✓ browser toolkit works" ;;
-    *)         echo "  ✗ snapshot didn't return the expected page - check chromium install"; exit 1 ;;
-  esac
-  pkill -f "control.py serve --profile setup-smoke" 2>/dev/null || true
-)
-
-echo
-echo "✓ setup complete. No login needed - the first run just works."
-echo "  Try: claude, then ask for 'frontier go wild ATL to Boston next weekend'."
+echo "Setup complete. Try: echo '{\"reads\":[{\"origin\":\"ATL\",\"destination\":\"DEN\",\"date\":\"YYYY-MM-DD\"}]}' | uv run python search.py"

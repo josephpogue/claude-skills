@@ -10,21 +10,19 @@ import sys
 import time
 from pathlib import Path
 
-# 'shared.browser' lives in one of two places depending on which checkout this
-# file runs from: the published frontier-go-wild skill vendors its own shared/
-# next to this file, while inside My-Life it comes from the sibling
-# flight-search automation. Try both, so this file stays byte-identical in both
-# trees and sync-vendored.py can mirror it verbatim. (conftest.py only covers
+# 'shared.profiles' comes from the sibling flight-search folder, in the source
+# repo and in the published frontier-go-wild skill alike, so this file is
+# mirrored into that skill byte for byte (automations/flight-search/publish_gowild.py).
+# A shared/ next to this file is still tried first. (conftest.py only covers
 # the pytest process, so the subprocess needs this too.)
 _HERE = Path(__file__).resolve().parent
 for _root in (_HERE, _HERE.parent / "flight-search"):
-    if (_root / "shared" / "browser.py").exists() and str(_root) not in sys.path:
+    if (_root / "shared" / "profiles.py").exists() and str(_root) not in sys.path:
         sys.path.insert(0, str(_root))
 
-import heal
 from session import BrowserSession
 
-_DISPATCH = {"open", "snapshot", "click", "type", "keyboard_type", "press", "wait", "screenshot", "save_state", "evaluate", "select", "select_native", "cache_route", "focus_nth", "type_focused", "tree", "act"}
+_DISPATCH = {"open", "snapshot", "click", "type", "keyboard_type", "press", "wait", "screenshot", "save_state", "evaluate", "select", "select_native", "cache_route", "focus_nth", "type_focused", "tree", "act", "pages", "use_page"}
 
 
 # Commands that drive a control, so a failure may be a moved button rather than
@@ -56,6 +54,9 @@ async def _run_command(session, cmd: str, cargs: dict, profile: str, ask=None):
     try:
         return await call(**cargs)
     except Exception as e:
+        # Imported only here: a step with no intent never heals, and the
+        # published frontier-go-wild skill ships this file without the healer.
+        import heal
         outcome = await heal.heal_step(
             session, site=site, key=key or cargs.get("selector") or cmd,
             intent=intent or "", error=f"{type(e).__name__}: {e}",
@@ -126,8 +127,8 @@ def _serve_detached(profile: str, headless: bool, state_file: str | None) -> int
 
     `serve` is a long-running daemon that never exits on its own, so running it
     in the foreground blocks (and hangs) the caller. Detaching makes the invoking
-    command return as soon as the socket is up, regardless of how it was launched
-    — this is the default so an agent can't accidentally hang a run on it."""
+    command return as soon as the socket is up, regardless of how it was launched,
+    and this is the default so an agent can't accidentally hang a run on it."""
     sock = _sock_path(profile)
     if os.path.exists(sock):
         os.unlink(sock)
@@ -172,6 +173,11 @@ def main() -> int:
     p.add_argument("--headed", action="store_true")
     p.add_argument("--headless", dest="headless", action="store_true")
     p.add_argument("--url"); p.add_argument("--selector"); p.add_argument("--value")
+    # The session methods already take a timeout_ms (session.py wait/click/press), but
+    # the command line had no way to pass one, so every wait, click and press ran on
+    # Playwright's 5000 ms default however long the caller meant to wait.
+    p.add_argument("--timeout-ms", dest="timeout_ms", type=int,
+                   help="how long the command waits in the page, in milliseconds")
     p.add_argument("--key"); p.add_argument("--path"); p.add_argument("--state")
     p.add_argument("--expression"); p.add_argument("--delay-ms", type=int, dest="delay_ms")
     p.add_argument("--pattern")
@@ -197,7 +203,7 @@ def main() -> int:
     args = {k: v for k, v in
             {"url": a.url, "selector": a.selector, "value": a.value,
              "key": a.key, "path": a.path, "expression": a.expression,
-             "delay_ms": a.delay_ms, "tag": a.tag, "n": a.n,
+             "delay_ms": a.delay_ms, "timeout_ms": a.timeout_ms, "tag": a.tag, "n": a.n,
              "pattern": a.pattern, "element_id": a.element_id,
              "method": a.method, "intent": a.intent, "key": a.selector_key,
              "site": a.site}.items() if v is not None}

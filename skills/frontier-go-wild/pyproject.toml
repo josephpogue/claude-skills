@@ -1,0 +1,9 @@
+[project]
+name = "frontier-go-wild"
+version = "2.0.0"
+description = "Read Frontier Go Wild seats for an exact list of one-way searches."
+requires-python = ">=3.12"
+dependencies = ["patchright>=1.49.0"]
+
+[tool.uv]
+package = false

@@ -22,6 +22,12 @@ layout matches the installed layout. No category buckets — keep it flat.
   install time, never in this repo.
 - Skills reach each other by prose invocation ("run `bash setup.sh` in the skill
   folder"), not by cross-folder file links.
+- `skills/frontier-go-wild/` code (`search.py`, `flight-search/`, `browser-pilot/`)
+  is generated from the private My-Life repo by
+  `automations/flight-search/publish_gowild.py` there; never edit it by hand
+  here. Change it in My-Life and re-run that script. The skill's `SKILL.md`,
+  `README.md`, `setup.sh`, `pyproject.toml`, `uv.lock` and `examples/` are
+  owned here.
 
 ## Install path
 

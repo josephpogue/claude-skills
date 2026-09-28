@@ -1,0 +1,8 @@
+{
+  "reads": [
+    {"origin": "MCO", "destination": "PHL", "date": "2030-03-14"},
+    {"origin": "PHL", "destination": "MCO", "date": "2030-03-17"}
+  ],
+  "filters": {"max_stops": 1, "max_layover_minutes": 240, "cabin": "economy"},
+  "max_age_hours": 6
+}

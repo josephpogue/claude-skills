@@ -5,7 +5,9 @@ the order given, one at a time, and never skips, reorders or ranks. A read
 that fails is reported as failed and the run goes on to the next. A site that
 stops answering (blocked twice, a login that will not hold) ends the run
 there: the read it happened on is failed, every read after it is
-`not_reached`, and both carry the reason.
+`not_reached`, and both carry the reason. A SIGTERM or SIGHUP ends a run the
+same way: the read it lands on and every read after it are `not_reached`, the
+browser is closed, and the document is still written.
 """
 from __future__ import annotations
 
@@ -37,6 +39,11 @@ ALREADY_RUNNING = "another live run of this skill is in progress; wait for it to
 
 _RUNLOG_BIN = os.environ.get("RUNLOG_BIN") or shutil.which("runlog") or os.path.expanduser("~/.local/bin/runlog")
 _RUNLOG_TIMEOUTS = {"start": 60, "done": 60, "error": 60}
+# The signals that stop a run and still write its document.
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGHUP)
+# The longest `Adapter.close` may take before the run gives up on it: the
+# Frontier reader's own stop call allows itself 60 seconds.
+CLOSE_TIMEOUT_S = 90
 
 
 def _runlog(*args: str) -> str | None:
@@ -101,11 +108,32 @@ def filter_read(read, res: ReadResult, request: Request) -> tuple[list[dict], di
 
 
 async def run(adapter: Adapter, request: Request, log: Callable[[str], None],
-              on_read: Callable[[int, int, str], None] = lambda done, total, label: None) -> dict[str, Any]:
+              on_read: Callable[[int, int, str], None] = lambda done, total, label: None,
+              signals: tuple[signal.Signals, ...] = ()) -> dict[str, Any]:
+    """`signals` stop the run from inside the event loop: the read (or second
+    read) under way is cancelled, and the run closes the adapter while the
+    browser's connection is still being served. The handler this replaced
+    raised SystemExit from outside the loop; asyncio then cancelled the
+    browser's connection along with the run, and `close` waited forever for a
+    reply (2026-09-28: a SIGTERM left amex-points-search idle, holding its lock)."""
     started = datetime.now().astimezone().isoformat(timespec="seconds")
     results: dict[int, ReadResult] = {}
     stop_reason: str | None = None
     total = len(request.reads)
+    loop, task = asyncio.get_running_loop(), asyncio.current_task()
+    signalled: list[signal.Signals] = []
+    reading = True
+
+    def _signalled(sig: signal.Signals) -> None:
+        # Only the reads are cancelled: a cancel landing in `close` would cut the browser's own shutdown short.
+        if not signalled:
+            signalled.append(sig)
+            if reading:
+                task.cancel()
+
+    previous = {sig: signal.getsignal(sig) for sig in signals}
+    for sig in signals:
+        loop.add_signal_handler(sig, _signalled, sig)
     try:
         for read in request.reads:
             label = f"{read.origin}-{read.destination} {read.day.isoformat()}"
@@ -132,11 +160,24 @@ async def run(adapter: Adapter, request: Request, log: Callable[[str], None],
                 results.update(await adapter.finish())
             except SourceUnavailable as e:
                 log(f"second reads stopped: {e}")
+    except asyncio.CancelledError:
+        if not signalled:
+            raise
+        task.uncancel()
+        stop_reason = f"{signalled[0].name} received"
+        log(f"{stop_reason}; closing the browser")
     finally:
-        await adapter.close()
+        reading = False
+        try:
+            await _close(adapter, log)
+        finally:
+            for sig, handler in previous.items():
+                loop.remove_signal_handler(sig)
+                signal.signal(sig, handler)
     reads_out, flights = [], []
     for read in request.reads:
-        res = results[read.index]
+        # A signal leaves the read it cut off, and every read after it, with no result.
+        res = results[read.index] if read.index in results else ReadResult(status="not_reached", note=stop_reason)
         kept, dropped = filter_read(read, res, request)
         flights.extend(kept)
         reads_out.append(_entry(read, res, len(kept), dropped))
@@ -145,6 +186,13 @@ async def run(adapter: Adapter, request: Request, log: Callable[[str], None],
             "started": started, "finished": datetime.now().astimezone().isoformat(timespec="seconds"),
             "filters": request.filters.as_dict(), "max_age_hours": request.max_age_hours,
             "saved_only": request.saved_only, "reads": reads_out, "flights": flights}
+
+
+async def _close(adapter: Adapter, log: Callable[[str], None]) -> None:
+    try:
+        await asyncio.wait_for(adapter.close(), CLOSE_TIMEOUT_S)
+    except TimeoutError:
+        log(f"the browser did not close within {CLOSE_TIMEOUT_S}s; it ends with the process")
 
 
 def refusal(adapter_cls: type[Adapter], reason: str, *, saved_only: bool) -> dict[str, Any]:
@@ -235,12 +283,13 @@ def _run_logged(adapter_cls: type[Adapter], request: Request) -> int:
             _runlog("progress", rid, f"read {done + 1} of {total}: {label}", "--fraction", f"{done / total:.2f}")
 
     def _terminated(signum, _frame) -> None:
+        # Outside the event loop only (runlog start, writing the document): inside it `run` owns these signals.
         raise SystemExit(f"stopped by signal {signum}")
 
-    for sig in (signal.SIGTERM, signal.SIGHUP):
+    for sig in STOP_SIGNALS:
         signal.signal(sig, _terminated)
     try:
-        doc = asyncio.run(run(adapter_cls(request, log), request, log, on_read))
+        doc = asyncio.run(run(adapter_cls(request, log), request, log, on_read, signals=STOP_SIGNALS))
         doc["run_id"] = rid
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         path = LOGS_DIR / f"{skill}-{rid}.json"

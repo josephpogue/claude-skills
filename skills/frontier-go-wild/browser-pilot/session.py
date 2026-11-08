@@ -7,10 +7,12 @@ across many client calls."""
 from __future__ import annotations
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-from patchright.async_api import async_playwright
+from patchright.async_api import Error as PlaywrightError, async_playwright
 from pagetree import _COLLECT_JS, _MAX_ELEMENTS, _TREE_SELECTOR
 from shared.profiles import UA, VIEWPORT, LOCALE, TIMEZONE, PROFILES_DIR, profile_dir
 
@@ -25,10 +27,30 @@ _CONTROL_SELECTOR = "a, button, input, select, textarea, [role=button]"
 _MAX_TEXT = int(os.environ.get("BROWSER_PILOT_MAX_TEXT") or 20000)
 
 
+def install_browser(headless: bool) -> None:
+    """Install the Chromium build this venv's patchright launches.
+
+    Runs patchright's own installer from this interpreter, so it fetches the
+    exact revision the driver expects and registers this venv in the cache's
+    .links folder (which keeps Playwright's own cleanup from deleting it)."""
+    cmd = [sys.executable, "-m", "patchright", "install", "chromium"]
+    if headless:
+        cmd.append("--only-shell")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        tail = (r.stderr or r.stdout).strip().splitlines()[-5:]
+        raise RuntimeError(f"patchright install failed: {' | '.join(tail)}")
+
+
 class BrowserSession:
-    def __init__(self, profile: str = "default", headless: bool = True, state_file: str | None = None):
+    def __init__(self, profile: str = "default", headless: bool = True, state_file: str | None = None,
+                 install=None):
         self.profile = profile
         self.headless = headless
+        # Downloads the browser this patchright version needs when the shared
+        # Playwright cache no longer has it (a disk cleanup deleted it on
+        # 2026-11-07 and every Go Wild run failed). Tests pass a stand-in.
+        self._install = install or install_browser
         # A persistent profile drops session cookies across processes, so a fresh
         # (e.g. headless Mission Control) run starts logged out. state_file persists
         # the storage state (cookies) to disk so the session survives across runs:
@@ -44,13 +66,26 @@ class BrowserSession:
         self._pw = await async_playwright().start()
         user_data = profile_dir(self.profile)
         user_data.mkdir(parents=True, exist_ok=True)
-        self.ctx = await self._pw.chromium.launch_persistent_context(
-            user_data_dir=str(user_data), headless=self.headless,
-            user_agent=UA, viewport=VIEWPORT, locale=LOCALE, timezone_id=TIMEZONE,
-        )
+        try:
+            try:
+                self.ctx = await self._launch(user_data)
+            except PlaywrightError as e:
+                if "Executable doesn't exist" not in str(e):
+                    raise
+                self._install(self.headless)
+                self.ctx = await self._launch(user_data)
+        except BaseException:
+            await self.stop()
+            raise
         self.page = self.ctx.pages[0] if self.ctx.pages else await self.ctx.new_page()
         await self._restore_state()
         self._route_cache: dict[str, dict] = {}
+
+    async def _launch(self, user_data: Path):
+        return await self._pw.chromium.launch_persistent_context(
+            user_data_dir=str(user_data), headless=self.headless,
+            user_agent=UA, viewport=VIEWPORT, locale=LOCALE, timezone_id=TIMEZONE,
+        )
 
     async def cache_route(self, pattern: str) -> str:
         """Intercept requests matching pattern: let the first call through to the real server,

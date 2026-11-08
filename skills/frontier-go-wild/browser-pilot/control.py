@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 
 # 'shared.profiles' comes from the sibling flight-search folder, in the source
@@ -132,28 +133,50 @@ def _serve_detached(profile: str, headless: bool, state_file: str | None) -> int
     sock = _sock_path(profile)
     if os.path.exists(sock):
         os.unlink(sock)
+    # The child's output goes to a log beside the socket, so when it cannot
+    # start the caller sees why instead of a bare "failed to start".
+    log = f"{sock}.log"
     pid = os.fork()
     if pid > 0:
-        for _ in range(300):  # wait up to ~30s for the child to bind the socket
+        # Wait for the socket while the child is alive. A first launch can
+        # include a browser download, so allow a few minutes.
+        for _ in range(3000):
             if os.path.exists(sock):
                 print(
                     f"browser-pilot listening on {sock} (profile={profile}, headless={headless})",
                     flush=True,
                 )
                 return 0
+            if os.waitpid(pid, os.WNOHANG)[0]:
+                break
             time.sleep(0.1)
+        reason = ""
+        try:
+            lines = [l for l in Path(log).read_text().splitlines() if l.strip()]
+            reason = "\n".join(lines[-12:])
+        except OSError:
+            pass
         print(f"browser-pilot: daemon for profile={profile} failed to start", file=sys.stderr, flush=True)
+        if reason:
+            print(reason, file=sys.stderr, flush=True)
         return 1
-    # Child: fully detach (new session, stdio → /dev/null) and run the server so it
-    # survives the parent returning and never holds the caller's pipes open.
+    # Child: fully detach (new session, stdout/stderr to the log) and run the
+    # server so it survives the parent returning and never holds the caller's pipes open.
     os.setsid()
-    devnull = os.open(os.devnull, os.O_RDWR)
-    for fd in (0, 1, 2):
-        os.dup2(devnull, fd)
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(devnull, 0)
+    out = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    for fd in (1, 2):
+        os.dup2(out, fd)
+    code = 0
     try:
         asyncio.run(_serve(profile, headless, state_file))
+    except BaseException:
+        traceback.print_exc()
+        sys.stderr.flush()
+        code = 1
     finally:
-        os._exit(0)
+        os._exit(code)
 
 
 async def _client(cmd: str, profile: str, args: dict) -> int:

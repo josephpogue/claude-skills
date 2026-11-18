@@ -20,7 +20,7 @@ from flights.linear.contract import ReadResult, Request, local_iso
 from flights.linear.rows import NO_SAVED_PAGE, no_sleep, outcome, reader_trip, ticket_row
 from flights.linear.runner import Adapter
 from flights.sources.base import BaseSources
-from flights.sources.frontier import DEEP_LINK, FrontierReader
+from flights.sources.frontier import FrontierReader, day_link
 from flights.tickets import Ticket, gowild_tickets, tz_of
 
 NOT_ECONOMY = "Go Wild sells economy seats only"
@@ -88,13 +88,14 @@ class GoWildAdapter(Adapter):
     skill = "frontier-go-wild"
     platform = "frontier-go-wild"
     price_type = "gowild"
+    max_adults = 9
 
     def __init__(self, request: Request, log) -> None:
         super().__init__(request, log)
         self.sink = BaseSources()
         trip = reader_trip(request)
         kwargs = {"ctl": _saved_only_ctl, "sleep": no_sleep} if request.saved_only else {}
-        self.reader = FrontierReader(trip, self.sink, log=log, **kwargs)
+        self.reader = FrontierReader(trip, self.sink, log=log, adults=request.adults, **kwargs)
 
     @classmethod
     def goes_live(cls, request: Request) -> bool:
@@ -104,12 +105,15 @@ class GoWildAdapter(Adapter):
     async def read(self, read) -> ReadResult:
         if self.request.filters.cabin != "economy":
             return ReadResult(status="not_applicable", note=NOT_ECONOMY)
+        if self.request.saved_only and self.request.adults != 1:
+            # a saved day page means 1 adult, so none can answer this read
+            return ReadResult(status="failed", note=NO_SAVED_PAGE)
         before = len(self.sink.searches)
         day = await self.reader.day(read.origin, read.destination, read.day)
         res = outcome(self.sink, before, self.request.max_age_hours)
         if day is None or day.get("unfetched"):
             return res       # already recorded as failed; no rows to build from
-        url = DEEP_LINK.format(o=read.origin, d=read.destination, day=read.day.isoformat())
+        url = day_link(read.origin, read.destination, read.day.isoformat(), self.request.adults)
         res.rows = [
             ticket_row(t, platform=self.platform, cabin="economy", layovers=t.source.get("layovers") or [],
                       layovers_known=True, source=res.source, saved_age_hours=res.saved_age_hours,

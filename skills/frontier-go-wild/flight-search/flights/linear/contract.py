@@ -82,6 +82,7 @@ class Request:
     filters: Filters
     max_age_hours: float | None = None      # None: a saved page of any age is reused; 0: every read is live
     saved_only: bool = False                # never open a browser; a read with no saved page fails
+    adults: int = 1                         # the search's adult count (1 to 9); only frontier-go-wild takes more than 1
 
 
 @dataclass
@@ -122,7 +123,7 @@ def parse_request(raw: dict[str, Any], *, saved_only: bool = False) -> Request:
     """The input JSON as a Request. Raises ValueError naming the field that is wrong."""
     if not isinstance(raw, dict):
         raise ValueError("input: expected a JSON object with `reads` and `filters`")
-    unknown = set(raw) - {"reads", "filters", "max_age_hours"}
+    unknown = set(raw) - {"reads", "filters", "max_age_hours", "adults"}
     if unknown:
         raise ValueError(f"input: unknown keys {sorted(unknown)}")
     items = raw.get("reads")
@@ -155,7 +156,10 @@ def parse_request(raw: dict[str, Any], *, saved_only: bool = False) -> Request:
     age = raw.get("max_age_hours")
     if age is not None and (isinstance(age, bool) or not isinstance(age, (int, float)) or age < 0):
         raise ValueError(f"max_age_hours: expected a number of 0 or more, got {age!r}")
-    return Request(tuple(reads), filters, None if age is None else float(age), saved_only)
+    adults = raw.get("adults", 1)
+    if type(adults) is not int or not 1 <= adults <= 9:
+        raise ValueError(f"adults: expected a whole number from 1 to 9, got {adults!r}")
+    return Request(tuple(reads), filters, None if age is None else float(age), saved_only, adults)
 
 
 def make_row(**values: Any) -> dict[str, Any]:

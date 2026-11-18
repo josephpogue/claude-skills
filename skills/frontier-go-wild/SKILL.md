@@ -41,6 +41,7 @@ uv run python search.py [--saved-only] < input.json > output.json
 - `reads`: one-way searches, read in exactly this order. Airports are IATA codes.
 - `filters`: all four are optional, and the one set applies to every read. `latest_arrival_date` is the local date at the destination. `cabin` is `economy`, `premium`, `business` or `first` (default `economy`).
 - `max_age_hours`: how old a saved page may be and still be used. Left out, any age is used; `0` reads everything live.
+- `adults`: optional, a whole number 1 to 9 (default 1). A flight shows only while it has that many Go Wild seats left, so reading one day at several adult counts finds how many seats a flight has. A read at more than 1 adult never uses or writes the saved 1-adult page.
 - Any other key is refused.
 
 ## Output

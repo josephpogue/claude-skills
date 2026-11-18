@@ -32,6 +32,14 @@ DUR = re.compile(r"^(?:(\d+) day\(s\) )?(\d+) hrs? (\d+) min(?: \(\+\d day\))? \
 MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 NETWORK_FILE = Path(__file__).with_name("frontier-network.json")
 DEEP_LINK = "https://booking.flyfrontier.com/Flight/InternalSelect?o1={o}&d1={d}&dd1={day}&ADT=1&mon=true&promo="
+
+
+def day_link(o: str, d: str, day_iso: str, adults: int = 1) -> str:
+    """The day page link for `adults` adults (Frontier takes 1 to 9)."""
+    link = DEEP_LINK.format(o=o, d=d, day=day_iso)
+    return link if adults == 1 else link.replace("&ADT=1&", f"&ADT={adults}&")
+
+
 # The Low Fare Calendar link on a day page (a#lowfareclendar) sends no request of its own:
 # its handler builds this URL from page state and navigates to it (formCalenderUrl and
 # switchViewGW in Frontier's js/select bundle, read 2026-09-16). ftype=GW is what the Go
@@ -324,7 +332,8 @@ class FrontierReader:
                  set_label: Callable[[str], None] = lambda s: None, ctl=None, sleep=asyncio.sleep,
                  now=time.monotonic, today=date.today, fetch=None, cal_dir: Path = CALENDAR_CACHE_DIR,
                  day_dir: Path = DAY_CACHE_DIR, profile: str = PROFILE,
-                 history_dir: Path | None = None) -> None:
+                 history_dir: Path | None = None, adults: int = 1) -> None:
+        self.adults = adults        # other than 1: day reads open the link for that many adults and touch no cache or history
         self.trip, self.sink, self.log, self.set_label = trip, sink, log, set_label
         self._ctl = ctl or pilot_ctl
         self._fetch = fetch or fetch_html
@@ -397,7 +406,7 @@ class FrontierReader:
         await self._pace()
         self._count_request()
         try:
-            await self._ask("open", "--url", DEEP_LINK.format(o=o, d=d, day=day_iso), timeout=120)
+            await self._ask("open", "--url", day_link(o, d, day_iso, self.adults), timeout=120)
             # A pill that never paints is a page state, not a driver fault: a block page
             # carries no booking header and no pill. Take the snapshot and let it decide.
             # --timeout-ms is what browser-pilot waits in the page; the `timeout` here is
@@ -424,7 +433,10 @@ class FrontierReader:
             return None
 
     def _write_json(self, path: Path, doc: dict) -> None:
-        """Save a live read: the latest copy at `path`, and the same text in the history."""
+        """Save a live read: the latest copy at `path`, and the same text in the history.
+        Nothing is saved for a read at other than 1 adult: the saved page and the history mean 1 adult."""
+        if self.adults != 1:
+            return
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         text = json.dumps(doc, indent=1)
@@ -465,7 +477,7 @@ class FrontierReader:
     async def day(self, o: str, d: str, day: date, fresh: bool = False) -> dict | None:
         day_iso = day.isoformat()
         path = self.day_dir / f"{o}_{d}_{day_iso}.json"
-        hit = None if (fresh or not self.use_cache) else self._read_json(path)
+        hit = None if (fresh or not self.use_cache or self.adults != 1) else self._read_json(path)
         if hit is not None and not hit.get("unfetched"):
             ok, age = self._fresh_enough(hit)
             if ok:

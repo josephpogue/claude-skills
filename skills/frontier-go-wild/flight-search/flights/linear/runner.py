@@ -64,6 +64,7 @@ class Adapter:
     skill = ""          # the skill's name, which is also its runlog name
     platform = ""
     price_type = ""
+    max_adults = 1      # the most adults a search may ask for; a skill that cannot search for more refuses them
 
     def __init__(self, request: Request, log: Callable[[str], None]) -> None:
         self.request, self.log = request, log
@@ -253,6 +254,9 @@ def main(adapter_cls: type[Adapter], argv: list[str] | None = None) -> int:
         request = parse_request(json.load(sys.stdin), saved_only=args.saved_only)
     except (ValueError, json.JSONDecodeError) as e:
         return _refuse(adapter_cls, str(e), saved_only=args.saved_only)
+    if request.adults > adapter_cls.max_adults:
+        return _refuse(adapter_cls, f"adults: {skill} searches for 1 adult only, got {request.adults}",
+                       saved_only=args.saved_only)
     # A run that opens no browser takes no lock, so any number of them may overlap.
     live = adapter_cls.goes_live(request)
     lock = live_lock(skill) if live else None
